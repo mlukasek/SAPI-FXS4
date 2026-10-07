@@ -82,7 +82,8 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 
 ## Další kroky a nápady
 
-- Sněžení CGA-1V na skutečné desce: zjistit, kde a kdy sněží, a podle toho upravit (viz Nejasnosti).
+- Sněžení CGA-1V na skutečné desce: vyzkoušet `fxs4.hex` (paleta v zatemnění) a případně `fxs4diag.hex`
+  (viz Nejasnosti).
 - Zvuk: jen když bude autor chtít jinou barvu tónu nebo šumu. Nápady jsou šum přes rytmický režim YM3812
   nebo jiná křivka hlasitosti AY. Všechno je v `opl_update` a `ym_regs` (`sapi/platform.asm`).
 - 2 MHz: animace čar je pomalejší (10,4 čáry/s proti 18,4 na Spectru). Zrychlit by šla `plot_xor`
@@ -95,15 +96,16 @@ Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po p
 
 ## Nejasnosti k ověření na HW
 
-- **CGA-1V lehce „sněží“.** V SAPIemu se to neprojeví (emulátor nechá CPU čekat na jeho okno a paletu
-  nekreslí po bodech). Možné příčiny, zatím neověřené:
-  - zápisy do palety Bt476 během zobrazování: port je dělá každý snímek (duha scrolleru 14 položek, barva
-    animace 5 položek) bez ohledu na zatemnění CGA (60 Hz, VBI ve STATUS D7). RAMDACy při zápisu palety
-    během kreslení obvykle krátce ruší obraz;
-  - přístupy CPU do videoram (scroller 480 bajtů za snímek, body čar, VU metry), kdyby čekání CPU na okno
-    na desce nestačilo.
-  - Pomůže zjistit, kde sněží: jen v řádcích scrolleru a animace (paleta), nebo všude, kde se kreslí
-    (videoram).
+- **CGA-1V lehce „sněží“ po celé obrazovce** (autor, verze 3498458). V SAPIemu se to neprojeví.
+  - Možné příčiny: zápisy do palety Bt476 během kreslení (port je dělal každý snímek kdykoli), nebo přístupy
+    CPU do videoram (scroller 480 bajtů za snímek, body čar, VU metry), kdyby čekání CPU na okno nestačilo.
+  - **Zkouška na HW:**
+    1. `build\fxs4.hex`: paleta se už zapisuje jen v zatemnění (VBI ve STATUS D7). Když nesněží, byla
+       příčinou paleta.
+    2. Když sněží dál, `build\fxs4diag.hex` (`build.cmd diag`): za běhu nic nekreslí, jen hraje a mění
+       paletu v zatemnění. Když tahle verze nesněží, sněžení dělají přístupy CPU do videoram (otázka na
+       CGA-1V a čekací stavy). Když sněží i tahle, jde o něco jiného (třeba samotné čtení STATUS
+       nebo zápis CONFIG).
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru

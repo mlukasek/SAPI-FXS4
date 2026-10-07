@@ -160,6 +160,9 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
 - **Překlad:** `build.cmd` → `build\fxs4.com`, `build\fxs4.hex` (od 0100h), `build\fxs4.sym`. Napřed
   `tools/make_tables.py` (vygeneruje `sapi/tables.asm`), na konci `tools/check_port.py` (velikost, volné
   místo, počet stránek pro `SAVE`).
+- **Diagnostika sněžení:** `build.cmd diag` → `build\fxs4diag.com`, `.hex` (`--equ DIAG=1`). Za běhu nic
+  nekreslí: VU metry, scroller, čáry ani mazání animace. Zůstane počáteční obrazovka, hudba a změny palety
+  v zatemnění.
 - **Zdroj portu:** `sapi/fxs4_sapi.asm` vznikl jednou z `orig/fxs4.asm` a dál se edituje ručně. Každá změna
   je označená `SAPI:` a říká, co dělal originál.
 
@@ -207,9 +210,16 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
   RLE 2154 bajtů).
 - **Animace čar:** body se invertují rovnou v CGA (`plot_xor`), algoritmus čáry je stejný jako v ROM (`draw_xor`).
   Oblast animace má kód 8 a cyklování barev mění jeho barvu v paletě (pásy 0–4).
-- **Paleta se zapisuje se zakázaným přerušením.** Adresa a R, G, B jsou čtyři zápisy. Přerušení mezi nimi
-  posunulo adresu a barva animace se zapsala do špatné položky („čudlíky“ ve scrolleru v každém 7. sloupci,
-  verze a2bc3de a dřívější). `tools/emu/block_check.py` je hledá na snímcích CGA.
+- **Paleta se zapisuje jen v zatemnění CGA-1V** (`pal_flush`).
+  - Barva animace (`anim_colour`) a otočení duhy (`scr_rainbow`) se jen poznamenají v `pal_anim`, `scr_rot`
+    a `pal_dirty`.
+  - Rychlé přerušení (1,3 kHz) čte STATUS CGA-1V (D7 = začátek zatemnění, 60 Hz). Když je nastavený, potvrdí
+    ho (CONFIG D7 = 1) a zapíše změny. Zatemnění trvá asi 4 ms (125 řádků), zápis 19 položek se vejde.
+  - Důvod: na skutečné CGA-1V obraz „sněžil“ po celé obrazovce. Zápis do RAMDACu během kreslení ruší obraz
+    tam, kde je zrovna paprsek.
+  - Paletu tak zapisuje jen přerušení, takže dřívější souběh hlavní smyčky s přerušením (adresa a R, G, B jsou
+    čtyři zápisy, „čudlíky“ ve scrolleru do a2bc3de) už nastat nemůže. `tools/emu/block_check.py` je hledá
+    na snímcích CGA.
 - **Scroller:** text jede plynule 2 body za snímek sloupci 1–30 řádku 23, nové písmeno každé 4 snímky.
   - Písmena dostávají po řadě kódy barev 9–15.
   - Každý snímek se barvy těchto kódů v paletě (pásy 5 a 6) posunou o jeden kód (`scr_rainbow`), takže duha

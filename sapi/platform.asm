@@ -22,6 +22,7 @@ MAP_CGA:	equ 0C0h		; MAP1 = MAP2 = H
 CGA:		equ 0C000h		; CGA-1V base
 CGA_SIZE:	equ 16000		; 200 lines x 80 bytes
 CGA_CFG:	equ CGA+03FFBh		; CONFIG (write)
+CGA_STATUS:	equ CGA+03FFBh		; STATUS (read): D7 = vertical blank since the last acknowledge
 CGA_PAL_ADDR:	equ CGA+03FFCh		; Bt476 palette address
 CGA_PAL_DATA:	equ CGA+03FFDh		; Bt476 R, G, B
 CGA_COLMASK:	equ CGA+03FFEh		; Bt476 pixel mask
@@ -157,7 +158,8 @@ sapi_exit:
 ; =====================================================================
 
 ; ---- isr (RST 38h, 1300.7 Hz)
-; Acknowledges F2 and reads the keyboard. Every FRAME_TICKS interrupts it
+; Acknowledges F2, reads the keyboard and writes palette changes when the
+; CGA-1V is in its vertical blank. Every FRAME_TICKS interrupts it
 ; does the work of a Spectrum frame with interrupts enabled (the keyboard
 ; is read meanwhile): key timers and isr_body of the original (VU meters,
 ; scroller, keys, player) while music_on. A frame
@@ -190,6 +192,15 @@ isr_strobe:				; STROBE active: take the key once
 	ld a,003h			; ACK (EKL-1 waits for it)
 	out (KSTB),a
 isr_kdone:
+	ld a,(CGA_STATUS)		; vertical blank of the CGA-1V (60 Hz)?
+	rlca
+	jr nc,isr_novbi
+	ld a,CFG_EGA+080h		; acknowledge it (CONFIG D7)
+	ld (CGA_CFG),a
+	ld a,(pal_dirty)		; palette changes now
+	or a
+	call nz,pal_flush
+isr_novbi:
 	ld a,(frame_div)
 	dec a
 	ld (frame_div),a
@@ -422,9 +433,10 @@ pi_code:
 	ret
 
 ; ---- pal_rgb
-; Palette entry A = R, G, B at HL. Keeps BC, DE, HL.
+; Palette entry A = R, G, B at HL. Keeps all registers.
 pal_rgb:
 	ld (CGA_PAL_ADDR),a
+	push af
 	ld a,(hl)
 	ld (CGA_PAL_DATA),a
 	inc hl
@@ -435,58 +447,34 @@ pal_rgb:
 	ld (CGA_PAL_DATA),a
 	dec hl
 	dec hl
+	pop af
 	ret
 
 ; ---- anim_colour
 ; A = Spectrum attribute of the line animation (the original filled the
-; attributes of rows 0-15 with it): the colour of ANIM_CODE in the bands
-; of the animation (CGA lines 4-131: bands 0-4). Keeps BC, DE, HL.
-; Runs in the main loop: an interrupt between the palette address and
-; R, G, B would move the address (it writes the palette too), so each
-; entry is written with DI.
+; attributes of rows 0-15 with it): its colour code (BRIGHT * 8 + INK) for
+; ANIM_CODE in the bands of the animation. Written to the palette in the
+; next vertical blank (pal_flush). Keeps BC, DE, HL.
 anim_colour:
-	push bc
-	push de
-	push hl
-	and 047h			; code = BRIGHT * 8 + INK
+	and 047h
 	bit 6,a
 	jr z,acl_n
 	xor 048h
 acl_n:
-	ld l,a				; HL = rgb_table + 3 * code
-	add a,a
-	add a,l
-	ld e,a
-	ld d,0
-	ld hl,rgb_table
-	add hl,de
-	ld a,i				; P/V = IFF2: were interrupts enabled?
-	push af
-	ld c,ANIM_CODE*2+1
-	ld b,5
-ac_band:
-	di
-	ld a,c
-	call pal_rgb
-	pop af				; EI again if they were enabled
-	push af
-	jp po,ac_di
-	ei
-ac_di:
-	ld a,c
-	add a,32
-	ld c,a
-	djnz ac_band
-	pop af
+	ld (pal_anim),a
+	push hl
+	ld hl,pal_dirty
+	set 0,(hl)
 	pop hl
-	pop de
-	pop bc
 	ret
 
 ; ---- anim_clear
 ; Clear the line animation (Spectrum lines 0-127 = CGA lines 4-131, code
 ; ANIM_CODE) and draw its frame again: lines 0 and 127, x = 0 and 255.
 anim_clear:
+	if DIAG				; build.cmd diag: no drawing (snow test)
+	ret
+	endif
 	ld hl,anim_lines
 	ld b,128
 acr_line:
@@ -530,6 +518,9 @@ acr_next:
 ; loop in the other register set and steps from COORDS).
 plot_xor:
 	ld (coords),bc
+	if DIAG				; build.cmd diag: no drawing (snow test)
+	ret
+	endif
 	ld a,175			; Spectrum line 175 - y = 0-127
 	sub b
 	ld l,a
@@ -628,6 +619,9 @@ dx_step:
 ; byte 7Eh (CGA: 77h, E7h). Only the rows between the old and the new
 ; height change.
 vu_cga:
+	if DIAG				; build.cmd diag: no drawing (snow test)
+	ret
+	endif
 	ld b,3				; channel 3, 2, 1
 vc_chan:
 	push bc
@@ -719,6 +713,9 @@ vu_row:
 ; row. scr_frame counts the frames: j = frame / 2 mod 64; character n is
 ; drawn into bytes 2n - 1 to 2n + 1 at frame 4n - 120, before it shows.
 scroll_cga:
+	if DIAG				; build.cmd diag: no drawing (snow test)
+	ret
+	endif
 	ld a,(scr_frame)
 	and 3
 	call z,scr_char
@@ -753,7 +750,8 @@ sc_line:
 	inc (hl)
 ; ---- scr_rainbow
 ; Codes 9-15 in bands 5 and 6 (CGA lines 160-199, only the scroller uses
-; them there): code 9 + k gets bright colour 1 + (k + scr_rot) mod 7.
+; them there): code 9 + k gets bright colour 1 + (k + scr_rot) mod 7, in
+; the next vertical blank (pal_flush).
 scr_rainbow:
 	ld a,(scr_rot)
 	inc a
@@ -762,9 +760,46 @@ scr_rainbow:
 	xor a
 sr_rot:
 	ld (scr_rot),a
+	ld hl,pal_dirty
+	set 1,(hl)
+	ret
+
+; ---- pal_flush
+; Palette changes, from the interrupt in the vertical blank of the CGA-1V
+; (a RAMDAC written while it draws disturbs the picture: "snow"). Bit 0
+; of pal_dirty: colour of the animation (pal_anim), bit 1: rainbow of the
+; scroller (scr_rot). Keeps all but AF.
+pal_flush:
+	push bc
+	push de
+	push hl
+	ld a,(pal_dirty)
+	ld c,a
+	xor a
+	ld (pal_dirty),a
+	bit 0,c
+	jr z,pf_rainbow
+	ld a,(pal_anim)			; HL = rgb_table + 3 * code
+	ld l,a
+	add a,a
+	add a,l
+	ld e,a
+	ld d,0
+	ld hl,rgb_table
+	add hl,de
+	ld a,ANIM_CODE*2+1		; bands 0-4
+	ld b,5
+pf_band:
+	call pal_rgb
+	add a,32
+	djnz pf_band
+pf_rainbow:
+	bit 1,c
+	jr z,pf_end
+	ld a,(scr_rot)
 	ld c,a				; C = (k + rot) mod 7 for k = 0
 	ld b,0				; B = k
-sr_code:
+pf_code:
 	ld a,c				; HL = rgb_table + 3 * (9 + C)
 	add a,9
 	ld l,a
@@ -778,20 +813,22 @@ sr_code:
 	add a,a
 	add a,5*32+9*2+1
 	call pal_rgb
-	ld a,b				; band 6
-	add a,a
-	add a,6*32+9*2+1
+	add a,32			; band 6
 	call pal_rgb
 	inc c
 	ld a,c
 	cp 7
-	jr c,sr_c
+	jr c,pf_c
 	ld c,0
-sr_c:
+pf_c:
 	inc b
 	ld a,b
 	cp 7
-	jr nz,sr_code
+	jr nz,pf_code
+pf_end:
+	pop hl
+	pop de
+	pop bc
 	ret
 
 ; ---- scr_char
@@ -1277,6 +1314,8 @@ coords:		defw 0			; COORDS (5C7Dh): x, y of the last point
 scr_frame:	defb 0			; scroller: frames
 scr_code:	defb 8			; scroller: colour code of the last character
 scr_rot:	defb 0			; scroller: rotation of the rainbow (0-6)
+pal_anim:	defb 7			; colour code of the animation (pal_flush)
+pal_dirty:	defb 0			; palette to write: bit 0 animation, bit 1 rainbow
 page0_save:	defs 3
 vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
 

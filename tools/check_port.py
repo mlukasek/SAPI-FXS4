@@ -15,12 +15,13 @@ def symbols(path):
 
 
 def main():
-    sym = symbols(os.path.join(ROOT, 'build', 'fxs4.sym'))
-    size = os.path.getsize(os.path.join(ROOT, 'build', 'fxs4.com'))
+    name = sys.argv[1] if len(sys.argv) > 1 else 'fxs4'
+    sym = symbols(os.path.join(ROOT, 'build', name + '.sym'))
+    size = os.path.getsize(os.path.join(ROOT, 'build', name + '.com'))
     end = sym['program_end']
     limit = sym['PROGRAM_LIMIT']
-    print('build\\fxs4.com: %d bytes (0100-%04X), free up to %04X: %d bytes, in CP/M: SAVE %d FXS4.COM'
-          % (size, 0x100 + size - 1, limit - 1, limit - end, (size + 255) // 256))
+    print('build\\%s.com: %d bytes (0100-%04X), free up to %04X: %d bytes, in CP/M: SAVE %d %s.COM'
+          % (name, size, 0x100 + size - 1, limit - 1, limit - end, (size + 255) // 256, name.upper()))
     if end > limit:
         print('ERROR: the program ends at %04X, in the stack' % end)
         return False
