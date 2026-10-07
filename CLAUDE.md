@@ -11,42 +11,38 @@ MPH-1V), jako CP/M `.COM`. Repo `mlukasek/SAPI-FXS4`. Autor: Martin Lukášek (m
 Program je hlavně přehrávač 26 skladeb A–Z pro **AY-3-8912** s rolujícím textem. Na Spectru potřebuje 128K
 nebo 48K s interfacem Melodik.
 
-## Stav
+## Stav a kde co je
 
-Zatím je tu jen originál `Demos/FXSOUND4.TAP` (1997). Port se bude dělat stejně jako `..\SAPI-Flappy`, které
-slouží jako vzor:
-- disassembler originálu se značkami `SAPI:`,
-- HW vrstva v `platform.asm`,
-- generované tabulky,
-- `build.cmd`,
-- ověřování proti originálu v emulátorech.
+- **Začni tady:** `README.md`. Obsahuje paměť originálu, jak běží, přehrávač, jak vznikl disassembler,
+  poznámky pro port a nejasnosti k ověření.
+- **Originál:** `Demos/FXSOUND4.TAP` (1997). Blok CODE 744Ah–FFFFh, BASIC zavaděč vyžaduje 48K režim.
+- **Disassembler:** `orig/fxs4.asm` je hotový a přeloží se bajt po bajtu stejně. Generuje ho
+  `tools/mkdis.py` z anotací v `tools/annot.py`, **needitovat ručně**. Po změně anotací:
+  `python tools\mkdis.py asm orig\fxs4.asm` a `python tools\check_orig.py` (musí hlásit OK).
+- **Model přehrávače:** `tools/player.py` (formát skladeb v jeho hlavičce).
+  - Dává rozložení dat skladeb pro disassembler a záznam registrů AY po tiknutích
+    (`python tools\player.py log A 500`).
+  - S emulátorem zatím ověřený není.
+- **Port** zatím nezačal. Bude se dělat stejně jako `..\SAPI-Flappy`:
+  - zdroj portu se značkami `SAPI:`,
+  - HW vrstva v `platform.asm`,
+  - `build.cmd`,
+  - ověřování proti originálu.
 
-Strukturu, `README.md` a příkazy sem doplnit, až vzniknou.
+## Důležité poznatky o originálu
 
-## Originál (zjištěno rozborem TAP)
-
-- **`FX SOUND 4`:** BASIC, autostart řádek 9000.
-  - Vyžaduje 48K režim: při `PEEK 23388` ≠ 0 (BANKM, 128K režim) vypíše „PREPNETE PROSIM SPECTRUM DO 48K
-    MODU“ a skončí.
-  - Pak `CLEAR 26999`, nahraje kód a spustí ho.
-- **`FXS4 CODE`:** **744Ah–FFFFh** (35766 B).
-  - Hlavní smyčka BASIC: `RANDOMIZE USR 33890` (8462h).
-  - Další vstupy: `USR 49500` (C15Ch) a `USR 50003` (C353h).
-  - BASIC mění kód přes `POKE 34025` (C3h `jp` / CAh `jp z`) a `POKE 34049`.
-  - Od 745Bh je rolující text, kolem 8180h–8430h jsou fonty.
 - **Zvuk:**
-  - Rutina na C585h zapisuje registry R13 až R0 ze stínové kopie C3E6–C3F3h (R0–R13) přes porty **FFFDh**
-    (adresa) a **BFFDh** (data). Toto je hlavní místo pro náhradu AY na SAPI.
-  - Na port 7FFDh (stránkování 128K) program nesahá. Proto by měl hrát i na 48K s interfacem kompatibilním
-    s porty 128K (Melodik). Na HW to ověřeno není.
-  - `out (FEh),a` je na C0FBh, C101h a D3FFh (border nebo beeper, neověřeno).
-- **Přerušení:**
-  - IM 2 s I = C2h, nastavené na C3A8h. Na FFFFh je 18h (`jr`), na FFF4h je `jp C3C4h` (obsluha).
-  - Rytmus přehrávání je 50 Hz přerušení Spectra.
-  - Návrat do IM 1 a I = 3Fh je na C16Fh.
-- **Formát TAP:** bloky jsou délka 2 B LE + flag + data + XOR. Hlavička má 19 B (typ 0 program, 3 CODE).
-- **Disassembler:** `..\Tools\z88dk\bin\z88dk-dis.exe -o 29770 -s <od> -e <do> fxs4.bin`, kde `fxs4.bin`
-  jsou data bloku CODE bez flagu a XOR.
+  - Jediné místo výstupu do AY je `ay_write` (C585h). V každém tiknutí (50 Hz, přerušení IM 2) zapíše
+    R13 až R0 ze stínové kopie `ay_regs` (C3E6h) přes porty FFFDh a BFFDh.
+  - Hardwarová obálka AY se nepoužívá.
+  - Na port 7FFDh program nesahá, proto by měl hrát i na 48K s Melodikem (neověřeno na HW).
+- **Data skladeb:**
+  - Jsou plně symbolická (`song_X`, `nt_`, `env_`, `fx_`), takže je jde přestěhovat.
+  - Je jich 27: 26 na klávesách A–Z a jedna skrytá na A4A6h, kterou žádná klávesa nevybírá.
+  - Příkaz 8Ch skladby Y volá kód, který zapisuje na 0000h. Na Spectru je tam ROM, na SAPI RAM.
+- **Samomodifikace:** opravované operandy mají návěští `equ $-n` (seznam v README).
+- **Animace čar:** strojový kód `lines` volá BASIC ve smyčce, kreslí přes ROM `DRAW`. Hudba, VU metry
+  a scroller běží v přerušení.
 
 ## Hlavní problémy portu
 
