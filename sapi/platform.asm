@@ -54,6 +54,7 @@ ENTER_HOLD:	equ 30			; 600 ms
 ZX_ENTER:	equ 021h		; KEY-SCAN codes: ENTER (frame: 3 ticks)
 ZX_SPACE:	equ 020h		; SPACE (lines: back to BASIC, see key_frame)
 ZX_ZERO:	equ 023h		; 0 (does nothing in the program)
+ZX_EXTRA:	equ 028h		; '-': the 27th song (no KEY-SCAN code, song_extra)
 
 ; Memory above the program (not in the .COM)
 PROGRAM_LIMIT:	equ 0B300h		; the program ends below (tools/check_port.py)
@@ -122,9 +123,12 @@ sapi_init:
 	out (MIEN),a
 	call start_music		; USR 49500 (enables the interrupt)
 	ei
-; BASIC line 20: RANDOMIZE USR 33890: GO TO 20
+; BASIC line 20: RANDOMIZE USR 33890: GO TO 20. The animation ends on
+; SPACE and starts again with an empty list of lines; the Spectrum left
+; the old lines on the screen, here the frame is drawn clean first.
 main_loop:
 	call lines
+	call anim_clear
 	jr main_loop
 
 ; ---- sapi_exit
@@ -292,6 +296,9 @@ key_frame:
 	ld e,ZX_SPACE
 	cp ' '
 	jr z,kf_set
+	ld e,ZX_EXTRA
+	cp '-'
+	jr z,kf_set
 	ld e,ZX_ZERO			; other keys: as 0 (no song)
 	and 0DFh			; lower case -> upper case
 	sub 'A'
@@ -326,6 +333,17 @@ key_scan:
 	ld a,(key_down)
 	ld e,a
 	ld d,0FFh			; no shift
+	ret
+
+; ---- song_extra
+; End of song_for_key (C016h): '-' (ZX_EXTRA) chooses the 27th song, that
+; no key chose on the Spectrum (A4A6h there). The noise mask is 1Fh as for
+; L-Z. Other keys: frame_play as before (the return address of
+; song_for_key is still on the stack, frame_play takes it).
+song_extra:
+	cp ZX_EXTRA
+	jp nz,frame_play
+	ld hl,song_nokey
 	ret
 
 ; KEY-SCAN codes of the letters A-Z
@@ -463,6 +481,47 @@ ac_di:
 	pop hl
 	pop de
 	pop bc
+	ret
+
+; ---- anim_clear
+; Clear the line animation (Spectrum lines 0-127 = CGA lines 4-131, code
+; ANIM_CODE) and draw its frame again: lines 0 and 127, x = 0 and 255.
+anim_clear:
+	ld hl,anim_lines
+	ld b,128
+acr_line:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	push hl
+	push bc
+	ld a,b				; first and last line: full
+	cp 128
+	jr z,acr_full
+	dec a
+	jr z,acr_full
+	ex de,hl			; x = 0, inside, x = 255
+	ld (hl),088h
+	inc hl
+	ld b,62
+acr_in:
+	ld (hl),ANIM_CODE
+	inc hl
+	djnz acr_in
+	ld (hl),018h
+	jr acr_next
+acr_full:
+	ex de,hl
+	ld b,64
+acr_f:
+	ld (hl),0F8h
+	inc hl
+	djnz acr_f
+acr_next:
+	pop bc
+	pop hl
+	djnz acr_line
 	ret
 
 ; ---- plot_xor (ROM PLOT-SUB with OVER 1)

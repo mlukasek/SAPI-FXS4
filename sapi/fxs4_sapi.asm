@@ -5406,7 +5406,7 @@ LC0E8:	cp 02h                           ; C0E8
 	ld hl,song_Y                           ; C0EC
 	ret                                    ; C0EF
 LC0F0:	cp 05h                           ; C0F0
-	jr nz,frame_play                       ; C0F2
+	jp nz,song_extra                       ; C0F2  SAPI: was jr nz,frame_play (27th song on '-')
 	ld hl,song_T                           ; C0F4
 	ret                                    ; C0F7
 frame_play:	pop de                      ; C0F8
