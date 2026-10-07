@@ -11,7 +11,7 @@ sys.path.insert(0, HERE)
 import sapimcp as sm
 import port
 
-PARTS = ['isr_work', 'vu_cga', 'scroller', 'frame', 'tick', 'opl_update', 'zx_flush_frame', 'zff_end']
+PARTS = ['isr_work', 'vu_cga', 'scroll_cga', 'frame', 'tick', 'opl_update', 'frame_end']
 
 
 def main():

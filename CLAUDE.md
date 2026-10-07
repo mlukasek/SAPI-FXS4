@@ -27,16 +27,19 @@ nebo 48K s interfacem Melodik.
 - **zx84 ze skriptů:** `tools/zx/` (klient MCP přes stdio, start originálu, srovnání AY, záznam
   provedeného kódu). Node.js je v `C:\Program Files\nodejs`, v `..\zx84` je `npm install` hotový.
 - **Port:** `sapi/fxs4_sapi.asm` (kopie disassembleru se změnami `SAPI:`, edituje se ručně),
-  `sapi/platform.asm` (CGA-1V, 82C54, klávesnice, PLOT/DRAW, AY → YM3812), `sapi/tables.asm` (generuje
-  `tools/make_tables.py`, needitovat). Překlad `build.cmd`. Běží v SAPIemu při 4 MHz, při 2 MHz práce
-  snímku nestačí. Podrobnosti v README (Port).
+  `sapi/platform.asm` (obraz na CGA-1V, 82C54, klávesnice, AY → YM3812), `sapi/tables.asm` (generuje
+  `tools/make_tables.py`, needitovat). Překlad `build.cmd`. Běží v SAPIemu při 4 i 2 MHz. Podrobnosti
+  v README (Port).
+- **Zásada autora:** napodobovat funkci, ne Spectrum. Obraz se kreslí přímo na CGA-1V. Nedělat buffery
+  a převody ve formátu Spectra ani věrné atributy, stačí „na první pohled podobné“. Hudba (registry AY)
+  ale musí být stejná.
 - **SAPIemu pro testy:** release `..\SAPIemu-release` (autor mezitím vyvíjí `..\SAPIemu`).
   - Spouštět `sapiemu-cli --machine machines/sapi1v.sapi --mcp --mcp-port 8592` na pozadí ve složce
     release. Port 8580 patří GUI autora.
   - Skripty jsou v `tools/emu` (`port.py`, `ay_check.py`, `bench.py`).
 - **Pravidla portu:**
-  - **Program musí končit pod A000h** (buffer obrazovky Spectra), hlídá to `tools/check_port.py`.
-    Volného místa je málo (teď asi 330 B).
+  - **Program musí končit pod `PROGRAM_LIMIT`** (B300h, nad ním zásobník, buffer čar a pásy scrolleru),
+    hlídá to `tools/check_port.py`. Volné místo je teď asi 5,3 KB.
   - Registry AY portu musí sedět s `player.py` (`tools/emu/ay_check.py`).
 
 ## Důležité poznatky o originálu

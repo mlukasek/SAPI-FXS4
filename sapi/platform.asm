@@ -1,25 +1,20 @@
 ; =====================================================================
-;  SAPI-1 V platform layer of the Fuxoft Soundtrack IV port: replaces the
-;  Spectrum screen and ROM (KEY-SCAN, PLOT, DRAW, the 50 Hz interrupt),
-;  the BASIC main loop and the AY-3-8912.
+;  SAPI-1 V platform layer of the Fuxoft Soundtrack IV port: what the
+;  Spectrum hardware, ROM and BASIC did, done on the SAPI-1 V.
 ;
 ;  Hardware (machines/sapi1v.sapi of SAPIemu):
 ;  - RAM-1V MAP register 63h: C0h = MAP1 = MAP2 = H, CGA-1V at C000h
 ;    (RAM C000-FFFF hidden, CP/M is not called while the program runs);
 ;  - CGA-1V in EGA mode: 80 bytes per line, 4 pixels per byte; the high
 ;    nibble has the pixels (D7 left), the low nibble a colour code for
-;    the four. Colour index = line / 32 * 32 + code * 2 + pixel. The
-;    Spectrum screen is in the middle (CGA_TOP lines and CGA_LEFT bytes
-;    from the top left), code = BRIGHT * 8 + INK (the paper is always
-;    black in this program), code 8 = the colour of the line animation;
+;    the four. Colour index = line / 32 * 32 + code * 2 + pixel: pixel 0
+;    is black, pixel 1 the colour of the code (BRIGHT * 8 + INK of the
+;    Spectrum; code 8 = the colour of the line animation). The picture
+;    of the Spectrum is in the middle (CGA_TOP lines, CGA_LEFT bytes);
 ;  - MPH-1V at 50h: 82C54 counter 2 (CLK 55930.4 Hz) sets F2 -> /INT0
 ;    (JPR-1V, IM 1 = RST 38h); YM3812;
 ;  - keyboard on JPR-1V (Consul 262.3 without 7474 or EKL-1): STROBE on
 ;    P0-IN0 (port 01h, active low), code on P1 (port 02h, inverted).
-;
-;  The program keeps the Spectrum screen in zx_screen (layout of 4000h);
-;  zx_flush_frame copies what changes in a frame to the CGA, zx_plot
-;  plots into both.
 ; =====================================================================
 
 MAPREG:		equ 063h		; RAM-1V MAP register
@@ -31,7 +26,7 @@ CGA_PAL_ADDR:	equ CGA+03FFCh		; Bt476 palette address
 CGA_PAL_DATA:	equ CGA+03FFDh		; Bt476 R, G, B
 CGA_COLMASK:	equ CGA+03FFEh		; Bt476 pixel mask
 CFG_EGA:	equ 000h		; EGA mode, CPU and display page A, no IRQ
-ANIM_CODE:	equ 8			; colour code of Spectrum rows 0-15
+ANIM_CODE:	equ 8			; colour code of the line animation
 
 PIT2:		equ 052h		; 82C54 counter 2
 PITCW:		equ 053h		; 82C54 control word (write)
@@ -59,13 +54,12 @@ ENTER_HOLD:	equ 30			; 600 ms
 ZX_ENTER:	equ 021h		; KEY-SCAN codes
 ZX_SPACE:	equ 020h
 
-; Memory above the program (not in the .COM): the program ends below
-; zx_screen (tools/check_port.py)
-zx_screen:	equ 0A000h		; Spectrum screen 0A000h-0BAFFh (aligned to 800h)
-ZX_ATTRS:	equ zx_screen+1800h
-LINE_BUF:	equ 0BB00h		; line end points (page), was 5B00h
-ZX_CODES:	equ 0BC00h		; colour codes of the attributes of a row (page)
-STACK_TOP:	equ 0C000h		; stack 0BD00h-0BFFFh (CGA-1V above)
+; Memory above the program (not in the .COM)
+PROGRAM_LIMIT:	equ 0B300h		; the program ends below (tools/check_port.py)
+STACK_TOP:	equ 0B700h		; stack down to PROGRAM_LIMIT
+LINE_BUF:	equ 0B700h		; line end points (page), was 5B00h
+STRIP_A:	equ 0B800h		; scroller strips: 8 lines x 128 bytes each
+STRIP_B:	equ 0BC00h
 
 ; =====================================================================
 ; Start, main loop, exit
@@ -73,9 +67,9 @@ STACK_TOP:	equ 0C000h		; stack 0BD00h-0BFFFh (CGA-1V above)
 
 ; ---- sapi_init
 ; Entry from CP/M (0100h). Puts JP isr at 38h, maps the CGA in, sets the
-; palette, the YM3812 and the keyboard, unpacks the Spectrum screen, does
-; what the BASIC did (lines 9200-9600) and starts the 82C54 interrupt and
-; the music (USR 49500).
+; palette, the YM3812 and the keyboard, draws the start screen, does what
+; the BASIC did (lines 9500-9600) and starts the 82C54 interrupt and the
+; music (USR 49500).
 sapi_init:
 	di
 	ld sp,STACK_TOP
@@ -102,9 +96,8 @@ sapi_init:
 	call ym_init
 	ld a,002h			; keyboard ACK off, buzzer off
 	out (KSTB),a
-	call zx_unpack
-	call zx_flush_all
-	call vu_prepare
+	call cga_unpack
+	call scr_init
 ; What the BASIC did before RANDOMIZE USR 49500 (lines 9500-9600)
 	ld a,0CAh			; POKE 34025,202: lines exit on ENTER only
 	ld (lines_exit_jp),a
@@ -161,8 +154,8 @@ sapi_exit:
 ; ---- isr (RST 38h, 1300.7 Hz)
 ; Acknowledges F2 and reads the keyboard. Every FRAME_TICKS interrupts it
 ; does the work of a Spectrum frame with interrupts enabled (the keyboard
-; is read meanwhile): key timers, isr_body of the original (VU meters,
-; scroller, keys, player) while music_on, the screen to the CGA. A frame
+; is read meanwhile): key timers and isr_body of the original (VU meters,
+; scroller, keys, player) while music_on. A frame
 ; that comes while the last one still runs only gets its player tick
 ; (ticks_owed, played at the end of the running one).
 isr:
@@ -230,9 +223,7 @@ isr_work:
 	ld a,(music_on)
 	or a
 	call nz,isr_body
-	ei				; frame_play returns with DI
-	call zx_flush_frame
-zff_end:
+frame_end:
 isr_owed:				; ticks of the frames that came meanwhile:
 	di				; the music does not slow down
 	ld a,(ticks_owed)
@@ -335,7 +326,7 @@ zx_letters:
 	defb 008h,01Ah,022h,025h,00Dh,01Eh,005h,00Ah,007h,01Dh,017h,002h,01Fh
 
 ; =====================================================================
-; Screen
+; Screen (CGA-1V, EGA mode)
 ; =====================================================================
 
 ; ---- cga_clear
@@ -348,15 +339,42 @@ cga_clear:
 	ldir
 	ret
 
+; ---- cga_unpack
+; cga_screen (RLE, see tools/make_tables.py) -> CGA page A.
+cga_unpack:
+	ld hl,cga_screen
+	ld de,CGA
+cu_loop:
+	ld a,(hl)
+	inc hl
+	or a
+	ret z
+	cp 080h
+	jr nc,cu_run
+	ld c,a				; A literal bytes
+	ld b,0
+	ldir
+	jr cu_loop
+cu_run:
+	sub 07Eh			; the next byte A - 7Eh times
+	ld b,a
+	ld a,(hl)
+	inc hl
+cu_r:
+	ld (de),a
+	inc de
+	djnz cu_r
+	jr cu_loop
+
 ; ---- pal_init
-; Palette entry d * 32 + code * 2 + pixel: pixel 0 black, pixel 1 the
-; Spectrum colour of the code, for the 7 bands of 32 lines.
+; Palette entry band * 32 + code * 2 + pixel: pixel 0 black, pixel 1 the
+; colour of the code (rgb_table), for the 7 bands of 32 lines.
 pal_init:
 	xor a
 	ld (CGA_PAL_ADDR),a
 	ld c,7
 pi_band:
-	ld hl,zx_rgb
+	ld hl,rgb_table
 	ld b,16
 pi_code:
 	xor a
@@ -377,24 +395,44 @@ pi_code:
 	jr nz,pi_band
 	ret
 
+; ---- pal_rgb
+; Palette entry A = R, G, B at HL. Keeps BC, DE, HL.
+pal_rgb:
+	ld (CGA_PAL_ADDR),a
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	dec hl
+	dec hl
+	ret
+
 ; ---- anim_colour
-; A = Spectrum attribute of rows 0-15 (the original filled 5800h-59FFh
-; with it): the colour of code ANIM_CODE in the bands of those rows
-; (CGA lines CGA_TOP to CGA_TOP + 127: bands 0-4). Keeps BC, DE, HL.
+; A = Spectrum attribute of the line animation (the original filled the
+; attributes of rows 0-15 with it): the colour of ANIM_CODE in the bands
+; of the animation (CGA lines 4-131: bands 0-4). Keeps BC, DE, HL.
 ; Runs in the main loop: an interrupt between the palette address and
-; R, G, B would write its own entries (zx_flush_frame) and this colour
-; would land in a wrong entry, so each entry is written with DI.
+; R, G, B would move the address (it writes the palette too), so each
+; entry is written with DI.
 anim_colour:
 	push bc
 	push de
 	push hl
-	call attr_code
-	ld l,a				; HL = zx_rgb + 3 * code
+	and 047h			; code = BRIGHT * 8 + INK
+	bit 6,a
+	jr z,acl_n
+	xor 048h
+acl_n:
+	ld l,a				; HL = rgb_table + 3 * code
 	add a,a
 	add a,l
 	ld e,a
 	ld d,0
-	ld hl,zx_rgb
+	ld hl,rgb_table
 	add hl,de
 	ld a,i				; P/V = IFF2: were interrupts enabled?
 	push af
@@ -419,280 +457,109 @@ ac_di:
 	pop bc
 	ret
 
-; ---- attr_code
-; A = Spectrum attribute -> A = colour code BRIGHT * 8 + INK.
-attr_code:
-	push bc
-	ld b,a
-	and 007h
-	bit 6,b
-	jr z,acd_end
-	or 008h
-acd_end:
-	pop bc
-	ret
-
-; ---- zx_unpack
-; start_screen (RLE: 00h n = n zero bytes, 0 = 256) -> zx_screen.
-zx_unpack:
-	ld hl,start_screen
-	ld de,zx_screen
-zu_loop:
-	ld a,d				; until zx_screen + 6912 = 0BB00h
-	cp high (zx_screen+6912)
-	ret z
-	ld a,(hl)
-	inc hl
-	or a
-	jr z,zu_zeros
-	ld (de),a
-	inc de
-	jr zu_loop
-zu_zeros:
-	ld b,(hl)
-	inc hl
-zu_z:
-	ld (de),a
-	inc de
-	djnz zu_z
-	jr zu_loop
-
-; ---- row_codes
-; A = Spectrum row 0-23: colour codes of its 32 attributes to ZX_CODES +
-; (row & 7) * 32 (the low byte of the pixel addresses of the row).
-; Rows 0-15 get ANIM_CODE. Keeps C.
-row_codes:
-	push bc
-	ld b,a
-	ld l,a				; HL = ZX_ATTRS + row * 32
-	ld h,0
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	ld de,ZX_ATTRS
-	add hl,de
-	ld a,b
-	and 007h
-	rrca
-	rrca
-	rrca
-	ld e,a				; DE = ZX_CODES + (row & 7) * 32
-	ld d,high ZX_CODES
-	ld a,b
-	cp 23
-	jr z,rc_r23
-	cp 16
-	ld b,32
-	jr c,rc_anim
-rc_loop:
-	ld a,(hl)
-	call attr_code
-	ld (de),a
-	inc hl
-	inc e
-	djnz rc_loop
-	pop bc
-	ret
-rc_anim:
-	ld a,ANIM_CODE
-	ld (de),a
-	inc e
-	djnz rc_anim
-	pop bc
-	ret
-rc_r23:					; row 23: fixed codes (zx_flush_frame)
-	ld hl,r23_codes
-	ld bc,32
-	ldir
-	pop bc
-	ret
-
-; ---- zx_row
-; A = Spectrum row 0-23: copy its 8 pixel lines to the CGA.
-zx_row:
-	push af
-	call row_codes
-	pop af
-	ld c,a				; C = row
-	and 018h			; HL = zx_screen + (row & 18h) * 256 + (row & 7) * 32
-	add a,high zx_screen
-	ld h,a
-	ld a,c
-	and 007h
-	rrca
-	rrca
-	rrca
+; ---- plot_xor (ROM PLOT-SUB with OVER 1)
+; B = y (48-175 from the bottom, the animation), C = x: invert the pixel
+; on the CGA, COORDS = BC. Changes AF, DE, HL (not BC: draw_xor keeps its
+; loop in the other register set and steps from COORDS).
+plot_xor:
+	ld (coords),bc
+	ld a,175			; Spectrum line 175 - y = 0-127
+	sub b
 	ld l,a
-	ld a,c				; line = row * 8
-	add a,a
-	add a,a
-	add a,a
-	ld b,8
-zr_line:
-	push bc
-	push hl
-	push af
-	call zx_line
-	pop af
-	pop hl
-	pop bc
-	inc a
-	inc h
-	djnz zr_line
-	ret
-
-; ---- zx_line
-; Copy 32 bytes of the Spectrum pixel line A (HL = its address) to the
-; CGA, colour codes from ZX_CODES (indexed by L).
-zx_line:
-	push hl
-	ld l,a				; DE = cga_lines[A]
 	ld h,0
 	add hl,hl
-	ld de,cga_lines
+	ld de,anim_lines
 	add hl,de
 	ld e,(hl)
 	inc hl
 	ld d,(hl)
-	pop hl
-	ld b,high ZX_CODES
-zl_byte:
-	ld c,l
-	ld a,(bc)			; code
-	ld c,a
-	ld a,(hl)
-	and 0F0h
-	or c
-	ld (de),a
-	inc de
-	ld a,(hl)
-	add a,a
-	add a,a
-	add a,a
-	add a,a
-	or c
-	ld (de),a
-	inc de
-	inc l
-	ld a,l
-	and 01Fh
-	jr nz,zl_byte
-	ret
-
-; ---- zx_flush_all
-; The whole Spectrum screen to the CGA.
-zx_flush_all:
-	xor a
-zfa_row:
-	push af
-	call zx_row
-	pop af
-	inc a
-	cp 24
-	jr nz,zfa_row
-	ret
-
-; ---- zx_flush_frame
-; Row 23 (scroller) to the CGA once a frame. The VU meters write to the
-; CGA themselves (vu_cga), the line animation too (zx_plot).
-;
-; The colours of row 23: the scroller shifts the attributes one column to
-; the left every frame and puts a new colour (41h-47h, period 7) into
-; column 30, so the colour of column c is the colour of column 30 from
-; 30 - c frames ago. Here column c has the fixed code 9 + c mod 7
-; (r23_codes; columns 0 and 31 have INK 0) and these 7 codes get the
-; colours of columns 24-30 in the palette (bands 5 and 6, CGA lines
-; 160-199, nothing else there uses them). What is on the screen is the
-; same; only the pixels of columns 1-30 are copied (r23_line).
-zx_flush_frame:
-	ld ix,r23_pal
-	ld hl,ZX_ATTRS+23*32+24
-	ld b,7
-zff_pal:
-	ld a,(hl)
-	inc hl
-	push hl
-	call attr_code			; HL = zx_rgb + 3 * code
+	ld a,c				; + x / 4
+	rrca
+	rrca
+	and 03Fh
 	ld l,a
-	add a,a
-	add a,l
+	ld h,0
+	add hl,de
+	ld a,c				; pixel bit 7 - (x & 3)
+	and 003h
 	ld e,a
 	ld d,0
-	ld hl,zx_rgb
-	add hl,de
-	ld a,(ix+0)			; band 5
-	call pal_rgb
-	ld a,(ix+0)			; band 6
-	add a,32
-	call pal_rgb
-	inc ix
-	pop hl
-	djnz zff_pal
-	ld hl,zx_screen+10E1h		; row 23, line 0, column 1
-	ld ix,cga_lines+(184*2)
-	ld b,8
-zff_line:
-	ld e,(ix+0)
-	ld d,(ix+1)
-	inc de				; column 1
-	inc de
-	inc ix
-	inc ix
+	ex de,hl
 	push bc
-	push hl
-	call r23_line
-	pop hl
+	ld bc,px_mask
+	add hl,bc
 	pop bc
-	inc h
-	djnz zff_line
+	ld a,(hl)
+	ex de,hl
+	xor (hl)
+	ld (hl),a
 	ret
 
-; ---- pal_rgb
-; Palette entry A = R, G, B at HL. Keeps BC, DE, HL.
-pal_rgb:
-	ld (CGA_PAL_ADDR),a
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	inc hl
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	inc hl
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	dec hl
-	dec hl
-	ret
+px_mask:
+	defb 080h,040h,020h,010h
 
-; ---- scroll_pixels
-; The rotation of the scroller (FF48h): 2 passes over the 8 lines of row
-; 23 from line 7, each RL from column 31 to column 1, the carry going on
-; from line to line (as on the Spectrum: what leaves column 1 enters
-; column 31 of the next line, which has INK 0). Unrolled.
-scroll_pixels:
-	ld c,2
-spx_pass:
-	ld h,high scr_r23_c31_l7
-	ld b,8
-spx_line:
-	ld l,0FFh			; column 31
-	rept 31
-	rl (hl)
-	dec l
-	endm
-	dec h
-	djnz spx_line
-	dec c
-	jr nz,spx_pass
+; ---- draw_xor (ROM DRAW-LINE)
+; B = |dy|, C = |dx|, D = sign of dy, E = sign of dx (+1 / -1): line from
+; COORDS like the ROM does it: the longer side steps every time, the
+; shorter one when the sum of its length passes the longer one (from
+; half). The loop state is in the other register set while plot_xor runs.
+draw_xor:
+	ld a,c
+	cp b
+	jr nc,dx_xge
+	ld l,c				; |dy| > |dx|: L = shorter
+	push de				; diagonal step
+	xor a
+	ld e,a				; straight step: dy only
+	jr dx_larger
+dx_xge:
+	or c
+	ret z
+	ld l,b
+	ld b,c
+	push de
+	ld d,0				; straight step: dx only
+dx_larger:
+	ld h,b				; H = longer, B = steps
+	ld a,b
+	rra
+dx_loop:
+	add a,l
+	jr c,dx_diag
+	cp h
+	jr c,dx_straight
+dx_diag:
+	sub h
+	ld c,a
+	exx
+	pop bc
+	push bc
+	jr dx_step
+dx_straight:
+	ld c,a
+	push de
+	exx
+	pop bc
+dx_step:
+	ld hl,(coords)			; L = x, H = y
+	ld a,b
+	add a,h
+	ld b,a
+	ld a,c
+	add a,l
+	ld c,a
+	call plot_xor
+	exx
+	ld a,c
+	djnz dx_loop
+	pop de
 	ret
 
 ; ---- vu_cga
-; vu_meters (FEC4h) writing to the CGA. The original clears the 15 rows
-; of the three bars (bytes 0, 2, 4 of each row of vu_rows) and draws a
-; bar of 7Eh for each channel with a tone, as high as its volume. Here
-; only the rows between the old and the new height change (vu_height);
-; the screen is the same. A Spectrum byte is two CGA bytes, INK 7.
+; VU meters (vu_meters of the original, FEC4h): a bar for each channel
+; with a tone, as high as its volume (0-15 rows of vu_cga_rows), of the
+; byte 7Eh (CGA: 77h, E7h). Only the rows between the old and the new
+; height change.
 vu_cga:
 	ld b,3				; channel 3, 2, 1
 vc_chan:
@@ -730,7 +597,7 @@ vc_h:
 vc_up:					; rows B .. C - 1: bar
 	ld a,b
 	call vu_row
-	ld (hl),077h			; 7Eh: pixels 0111, 1110
+	ld (hl),077h
 	inc hl
 	ld (hl),0E7h
 	inc b
@@ -753,13 +620,13 @@ vc_next:
 	djnz vc_chan
 	ret
 
-; HL = vu_rows_cga[A] + DE. Keeps BC, DE.
+; HL = vu_cga_rows[A] + DE. Keeps BC, DE.
 vu_row:
 	add a,a
 	ld l,a
 	ld h,0
 	push de
-	ld de,vu_rows_cga
+	ld de,vu_cga_rows
 	add hl,de
 	ld a,(hl)
 	inc hl
@@ -769,193 +636,185 @@ vu_row:
 	add hl,de
 	ret
 
-; ---- vu_prepare
-; vu_rows_cga = CGA addresses of vu_rows (Spectrum screen).
-vu_prepare:
-	ld hl,vu_rows
-	ld ix,vu_rows_cga
-	ld b,15
-vp_row:
-	ld e,(hl)
-	inc hl
-	ld d,(hl)
-	inc hl
+; ---- scroll_cga
+; Scroller (scroller of the original, FF28h): the text moves 2 pixels a
+; frame through columns 1-30 of row 23, a new character every 4 frames.
+; Each character gets the next of the bright colours 1-7 (the original
+; shifted the colours one column a frame instead).
+;
+; Two strips hold the text as CGA bytes (4 pixels + colour code): strip
+; A byte j = pixels 4j to 4j+3 of the text, strip B byte j = pixels 4j+2
+; to 4j+5. A frame copies 60 bytes of each of the 8 lines from strip A
+; (even frames) or B (odd frames) to the CGA. A strip line is a ring of
+; 64 bytes stored twice (j and j + 64), so 60 bytes from any j are in a
+; row. scr_frame counts the frames: j = frame / 2 mod 64; character n is
+; drawn into bytes 2n - 1 to 2n + 1 at frame 4n - 120, before it shows.
+scroll_cga:
+	ld a,(scr_frame)
+	and 3
+	call z,scr_char
+	ld a,(scr_frame)
+	ld hl,STRIP_A
+	rrca				; CY = odd frame: strip B
+	jr nc,sc_a
+	ld hl,STRIP_B
+sc_a:
+	and 03Fh			; j = frame / 2 mod 64
+	ld e,a
+	ld d,0
+	add hl,de
+	ld de,SCROLL_CGA
+	ld a,8
+sc_line:
 	push hl
-	push bc
-	call zx_to_cga
-	ld (ix+0),l
-	ld (ix+1),h
-	inc ix
-	inc ix
-	pop bc
-	pop hl
-	djnz vp_row
+	push de
+	rept 60
+	ldi
+	endm
+	pop hl				; next CGA line
+	ld bc,80
+	add hl,bc
+	ex de,hl
+	pop hl				; next strip line
+	ld bc,128
+	add hl,bc
+	dec a
+	jp nz,sc_line
+	ld hl,scr_frame
+	inc (hl)
 	ret
 
-; ---- zx_to_cga
-; DE = address in zx_screen -> HL = CGA address of its first 4 pixels.
-zx_to_cga:
-	ld a,d				; line = (H & 18h) * 8 + (L & E0h) / 4 + (H & 7)
-	and 018h
-	add a,a
-	add a,a
-	add a,a
-	ld c,a
-	ld a,e
-	and 0E0h
-	rrca
-	rrca
-	add a,c
-	ld c,a
-	ld a,d
-	and 007h
-	add a,c
+; ---- scr_char
+; The next character of the text into the strips at j = frame / 2 + 60.
+scr_char:
+	ld hl,(text_ptr)		; text, FFh = back to the start
+sch_ch:
+	ld a,(hl)
+	cp 0FFh
+	jr nz,sch_ok
+	ld hl,(text_start)
+	jr sch_ch
+sch_ok:
+	inc hl
+	ld (text_ptr),hl
+	sub 020h			; IX = glyph (font: characters 20h-7Fh)
 	ld l,a
 	ld h,0
 	add hl,hl
-	ld bc,cga_lines
-	add hl,bc
-	ld a,(hl)
-	inc hl
-	ld h,(hl)
-	ld l,a
-	ld a,e				; + column * 2
-	and 01Fh
-	add a,a
+	add hl,hl
+	add hl,hl
+	ld de,font
+	add hl,de
+	push hl
+	pop ix
+	ld a,(scr_code)			; next colour: codes 9-15
+	inc a
+	cp 16
+	jr c,sch_c
+	ld a,9
+sch_c:
+	ld (scr_code),a
+	ld (sch_code),a
+	ld a,(scr_frame)		; C = j
+	rrca
+	add a,60
+	and 03Fh
 	ld c,a
-	ld b,0
-	add hl,bc
+	ld hl,STRIP_A
+	ld b,8
+sch_line:
+	push bc
+	push hl
+	ld a,(sch_code)
+	ld e,a				; E = code
+	ld d,(ix+0)			; D = glyph line
+	ld a,d				; A[j] = pixels 0-3
+	and 0F0h
+	or e
+	call ring_put
+	inc c
+	ld a,d				; A[j + 1] = pixels 4-7
+	add a,a
+	add a,a
+	add a,a
+	add a,a
+	or e
+	call ring_put
+	ld de,STRIP_B-STRIP_A		; strip B
+	add hl,de
+	ld a,(sch_code)
+	ld e,a
+	ld d,(ix+0)
+	dec c
+	dec c				; B[j - 1] |= pixels 0-1 (low half)
+	ld a,d
+	rrca
+	rrca
+	and 030h
+	call ring_or
+	inc c				; B[j] = pixels 2-5
+	ld a,d
+	add a,a
+	add a,a
+	and 0F0h
+	or e
+	call ring_put
+	inc c				; B[j + 1] = pixels 6-7 (high half)
+	ld a,d
+	rrca
+	rrca
+	and 0C0h
+	or e
+	call ring_put
+	inc ix
+	pop hl
+	ld de,128
+	add hl,de
+	pop bc
+	djnz sch_line
 	ret
 
-; ---- zx_plot (ROM PLOT-SUB, 22E5h, with OVER 1)
-; B = y (0-175 from the bottom), C = x: XOR the pixel in zx_screen and on
-; the CGA, COORDS = BC. The attribute stays (INK 8, PAPER 8).
-; Changes AF, BC, DE, HL (not the other register set, see zx_draw_line).
-zx_plot:
-	ld (zx_coords),bc
-	ld a,175			; line = 175 - y
-	sub b
-	ld b,a
-	and 0C0h			; H = high zx_screen + (line & C0h) / 8 + (line & 7)
-	rrca
-	rrca
-	rrca
-	ld h,a
-	ld a,b
-	and 007h
-	or h
-	add a,high zx_screen
-	ld h,a
-	ld a,b				; L = (line & 38h) * 4 + x / 8
-	and 038h
-	add a,a
-	add a,a
-	ld l,a
+sch_code:	defb 0
+
+; ---- ring_put, ring_or
+; Strip line HL (a multiple of 128), byte C (mod 64) = A / |= A, in both
+; copies (C and C + 64). Keeps BC, DE, HL.
+ring_put:
+	push hl
+	push af
 	ld a,c
-	rrca
-	rrca
-	rrca
-	and 01Fh
+	and 03Fh
 	or l
 	ld l,a
-	ld a,c				; bit 7 - (x & 7)
-	and 007h
-	ld e,a
-	ld a,080h
-	jr z,zp_m1
-zp_s1:
-	rrca
-	dec e
-	jr nz,zp_s1
-zp_m1:
-	xor (hl)
+	pop af
 	ld (hl),a
-	ld l,b				; CGA: cga_lines[line] + x / 4, bit 7 - (x & 3)
-	ld h,0
-	add hl,hl
-	ld de,cga_lines
-	add hl,de
-	ld e,(hl)
-	inc hl
-	ld d,(hl)
+	set 6,l
+	ld (hl),a
+	pop hl
+	ret
+ring_or:
+	push hl
+	push af
 	ld a,c
-	rrca
-	rrca
 	and 03Fh
+	or l
 	ld l,a
-	ld h,0
-	add hl,de
-	ld a,c
-	and 003h
-	ld e,a
-	ld a,080h
-	jr z,zp_m2
-zp_s2:
-	rrca
-	dec e
-	jr nz,zp_s2
-zp_m2:
-	xor (hl)
+	pop af
+	or (hl)
 	ld (hl),a
+	set 6,l
+	ld (hl),a
+	pop hl
 	ret
 
-; ---- zx_draw_line (ROM DRAW-LINE, 24BAh)
-; B = |dy|, C = |dx|, D = sign of dy, E = sign of dx (+1 / -1): draw from
-; COORDS like the ROM: the longer side steps every time, the shorter one
-; when the sum of its length passes the longer one (start at half). The
-; loop state is in the other register set while zx_plot runs, as in the
-; ROM. The range checks of the ROM are left out (the animation stays in
-; the screen).
-zx_draw_line:
-	ld a,c
-	cp b
-	jr nc,zdl_xge
-	ld l,c				; |dy| > |dx|: L = shorter
-	push de				; diagonal step
-	xor a
-	ld e,a				; straight step: dy only
-	jr zdl_larger
-zdl_xge:
-	or c
-	ret z
-	ld l,b
-	ld b,c
-	push de
-	ld d,0				; straight step: dx only
-zdl_larger:
-	ld h,b				; H = longer, B = steps
-	ld a,b
-	rra
-zdl_loop:
-	add a,l
-	jr c,zdl_diag
-	cp h
-	jr c,zdl_straight
-zdl_diag:
-	sub h
-	ld c,a
-	exx
-	pop bc
-	push bc
-	jr zdl_step
-zdl_straight:
-	ld c,a
-	push de
-	exx
-	pop bc
-zdl_step:
-	ld hl,(zx_coords)		; L = x, H = y
-	ld a,b
-	add a,h
-	ld b,a
-	ld a,c
-	add a,l
-	ld c,a
-	call zx_plot
-	exx
-	ld a,c
-	djnz zdl_loop
-	pop de
+; ---- scr_init
+; Empty strips.
+scr_init:
+	ld hl,STRIP_A
+	ld de,STRIP_A+1
+	ld bc,2*8*128-1
+	ld (hl),0
+	ldir
 	ret
 
 ; =====================================================================
@@ -966,13 +825,12 @@ zdl_step:
 ; YM3812 plays them: channels 0-2 the tones of AY channels A-C, channel 3
 ; the noise. Tone: period P (12 bits), 1.7734 MHz / 16 / P = 110837.5 / P
 ; Hz, the same constant as the MZ-800 PSG of the Flappy port (110840):
-; F-number = K / (P << block), K = 110840 * 2^20 / 49716 = 23ABECh.
+; F-number = K / (P << block), K = 110840 * 2^20 / 49716 = 23ABECh
+; (fnum_table, tools/make_tables.py).
 ; Noise: one generator (period R6) for all channels; the YM3812 channel
 ; gets the loudest volume of the channels with noise on. A channel with
 ; both tone and noise (the AY outputs tone AND noise) plays its tone 6 dB
 ; lower. AY volume 0-15 -> TL in steps of 3 dB, 0 = key off.
-YM_KHI:		equ 008EAh		; K >> 10
-YM_KLO:		equ 003ECh		; the 10 low bits of K
 
 ym_init:
 	ld hl,ym_regs
@@ -1236,14 +1094,16 @@ yv_off:
 
 ; ---- ym_fnum
 ; DE = period 1-4095 -> HL = F-number, B = block, CY = 1 when the tone is
-; above the YM3812 (period < 18, over 6 kHz). Keeps C.
+; above the YM3812 (period < 18, over 6 kHz). The period is shifted left
+; (block) until it is over K >> 10, then fnum_table has K / period.
+; Keeps C.
 ym_fnum:
 	ld b,0
 yf_blk:
-	ld hl,YM_KHI
+	ld hl,FNUM_LO-1
 	or a
 	sbc hl,de
-	jr c,yf_div			; P << block > K >> 10
+	jr c,yf_tab			; P << block >= FNUM_LO
 	ld a,b
 	cp 7
 	jr z,yf_max
@@ -1256,40 +1116,21 @@ yf_max:
 	ld hl,1023
 	scf
 	ret
-yf_div:
-	push bc
-	push ix
-	ld ix,0				; quotient
-	ld hl,YM_KHI			; remainder
-	ld bc,YM_KLO			; next bits of K, shifted out of B: 10 bits
-	ld a,10
-yf_loop:
-	add ix,ix
-	sla c				; CY = next bit of K (bit 9 of BC first)
-	rl b
-	bit 2,b
-	jr z,yf_b0
-	res 2,b
-	scf
-	jr yf_bit
-yf_b0:
-	or a
-yf_bit:
-	adc hl,hl
-	or a
-	sbc hl,de
-	jr nc,yf_one
+yf_tab:
+	ex de,hl			; HL = fnum_table[(P - FNUM_LO) / 4]
+	ld de,-FNUM_LO
 	add hl,de
-	jr yf_next
-yf_one:
-	inc ix
-yf_next:
-	dec a
-	jr nz,yf_loop
-	push ix
-	pop hl
-	pop ix
-	pop bc
+	srl h
+	rr l
+	srl h
+	rr l
+	add hl,hl
+	ld de,fnum_table
+	add hl,de
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
 	or a
 	ret
 
@@ -1322,10 +1163,10 @@ kbd_code:	defb 0			; key from the interrupt (0 = none)
 key_down:	defb 0FFh		; KEY-SCAN code of the key that is down
 key_timer:	defb 0			; frames it stays down
 song_mark:	defb 0			; written by the 8Ch calls of song Y
-zx_coords:	defw 0			; COORDS (5C7Dh): x, y of the last point
-sv_chars:	defw font-0100h		; CHARS (5C36h, BASIC 9010: 8060h)
+coords:		defw 0			; COORDS (5C7Dh): x, y of the last point
+scr_frame:	defb 0			; scroller: frames
+scr_code:	defb 8			; scroller: colour code of the last character
 page0_save:	defs 3
-vu_rows_cga:	defs 30			; CGA addresses of vu_rows
 vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
 
 ; The first bytes of the Spectrum ROM: a channel without a pitch effect

@@ -10,15 +10,14 @@ sestavu V (JPR-1V, RAM-1V, CGA-1V, MPH-1V), jako CP/M `.COM`.
   (744Ah–FFFFh).
 - Model přehrávače `tools/player.py` je ověřený v emulátoru zx84. Všech 27 skladeb dává na
   15 000 tiknutích (5 minut) stejné registry AY jako originál.
-- **Port běží v SAPIemu** (release 0.2.0-alpha, `machines/sapi1v.sapi`, 4 MHz).
-  - Obrazovka je stejná jako na Spectru: rámeček, animace čar s cyklováním barev, texty, VU metry
-    a barevný scroller.
+- **Port běží v SAPIemu** (release 0.2.0-alpha, `machines/sapi1v.sapi`, 4 i 2 MHz).
+  - Obraz je na první pohled jako na Spectru: rámeček, animace čar s cyklováním barev, texty, VU metry
+    a barevný scroller. Kreslí se přímo na CGA-1V, Spectrum se nenapodobuje.
   - Přehrávač dává tick po ticku stejné registry AY jako model (ověřeno `tools/emu/ay_check.py` na
     skladbách A, E, F, R, Z a výběrem kláves).
   - Klávesy A–Z vybírají skladbu, ENTER zrychluje, ESC vrací do CP/M.
-  - Při 2 MHz práce snímku nestačí (viz Port, Časování).
-  - Zvuk YM3812 je první návrh převodu z AY, čeká na poslech.
-  - Na skutečném HW zatím nevyzkoušeno.
+  - Zvuk YM3812 autorovi zní dobře.
+- Na skutečném HW zatím nevyzkoušeno.
 
 ## Soubory
 
@@ -36,10 +35,10 @@ sestavu V (JPR-1V, RAM-1V, CGA-1V, MPH-1V), jako CP/M `.COM`.
 | `tools/zx/exec_trace.py` | provedené adresy originálu v zx84 do `build/exec_zx84.txt` (čte `mkdis.py`) |
 | `tools/zx/capture_screen.py` | obrazovka originálu při startu hudby (`USR 49500`) → `build/zx_start_screen.bin` |
 | `sapi/fxs4_sapi.asm` | port: kopie `orig/fxs4.asm` se změnami `SAPI:`, dál se edituje ručně |
-| `sapi/platform.asm` | náhrada Spectra: CGA-1V, 82C54, klávesnice, PLOT a DRAW z ROM, AY → YM3812 |
-| `sapi/tables.asm` | generuje `tools/make_tables.py` (needitovat): počáteční obrazovka, adresy řádků CGA, barvy, řádek 23 |
+| `sapi/platform.asm` | funkce Spectra na SAPI: obraz na CGA-1V, 82C54, klávesnice, AY → YM3812 |
+| `sapi/tables.asm` | generuje `tools/make_tables.py` (needitovat): obrazovka pro CGA, adresy linek, barvy, F-number |
 | `tools/zx_start_screen.bin` | kopie zachycené obrazovky pro `make_tables.py` (překlad nepotřebuje zx84) |
-| `tools/check_port.py` | po překladu: velikost, program musí končit pod bufferem obrazovky |
+| `tools/check_port.py` | po překladu: velikost, program musí končit pod zásobníkem (`PROGRAM_LIMIT`) |
 | `tools/emu/sapimcp.py`, `port.py` | klient MCP SAPIemu, start portu v CP/M a snímek CGA-1V |
 | `tools/emu/ay_check.py` | registry AY portu v SAPIemu proti `player.py` |
 | `tools/emu/bench.py` | doba práce snímku po částech při 4 a 2 MHz |
@@ -170,10 +169,13 @@ Y dočasně přepíše operand na C0EDh.
 
 ## Port (SAPI-1 V)
 
+Port napodobuje, **co program dělá**, ne hardware Spectra. Hudba (přehrávač a data skladeb) je originál beze
+změny. Obraz se kreslí přímo na CGA-1V vlastními rutinami: na první pohled stejný, v detailech jiný.
+
 ### Spuštění
 
 - **Překlad:** `build.cmd` → `build\fxs4.com`, `build\fxs4.hex` (od 0100h), `build\fxs4.sym`. Na konci vypíše
-  počet stránek pro `SAVE` (teď 158).
+  počet stránek pro `SAVE` (teď 158) a volné místo.
 - **V SAPIemu:** v CP/M Soubor → Nahrát program do paměti (`build\fxs4.hex`), pak `SAVE 158 FXS4.COM`. Přes
   MCP: `load_binary` souboru `fxs4.com` na 0100h a `set_registers` s `pc` = 0100h (`tools/emu/port.py`).
 - **Ovládání:** A–Z skladba (27. skladba na klávesu nemá), ENTER zrychlení (3 tiknutí za snímek), ESC návrat
@@ -184,17 +186,14 @@ Y dočasně přepíše operand na C0EDh.
 | Adresa | Obsah |
 |---|---|
 | 0038h | `JP isr` (původní 3 bajty se při návratu do CP/M vrátí) |
-| 0100h | `JP sapi_init`, pak celý originál (744A–FFFFh) přeložený od 0103h, bez tabulky IM 2 a nepoužitých mezer |
-| konec originálu | `platform.asm`, `tables.asm`, program končí pod A000h (`tools/check_port.py`) |
-| A000–BAFF | obrazovka Spectra `zx_screen` (rozložení 4000–5AFFh, zarovnaná na 800h) |
-| BB00–BBFF | konce čar animace (`LINE_BUF`, originál 5B00h) |
-| BC00–BCFF | kódy barev řádku (`ZX_CODES`) |
-| BD00–BFFF | zásobník |
+| 0100h | `JP sapi_init`, pak originál (744A–FFFFh) přeložený od 0103h, bez tabulky IM 2, nepoužitých mezer, VU metrů a scrolleru |
+| konec originálu | `platform.asm`, `tables.asm`, program končí pod `PROGRAM_LIMIT` B300h (`tools/check_port.py`) |
+| B300–B6FF | zásobník |
+| B700–B7FF | konce čar animace (`LINE_BUF`, originál 5B00h, kód používá `inc l`) |
+| B800–BFFF | pásy scrolleru A a B (8 linek × 128 bajtů) |
 | C000–FFFF | CGA-1V (`OUT 63h,C0h`), CP/M pod ní se za běhu nevolá |
 
-- Všechny adresy originálu jsou návěští (disassembler je symbolický), proto se celý originál přeložil od 0103h.
-  Zbylé pevné adresy jsou jen obrazovka Spectra (`zx_screen+...`) a `LINE_BUF` (začátek stránky, kód
-  používá `inc l`).
+- Všechny adresy originálu jsou návěští (disassembler je symbolický), proto se originál přeložil od 0103h.
 - Porty: 01h, 02h klávesnice (JPR-1V), 50h–57h MPH-1V (82C54, IEN, IACK, YM3812), 63h MAP. Port FEh
   (border) se nepoužívá.
 
@@ -202,12 +201,13 @@ Y dočasně přepíše operand na C0EDh.
 
 | Spectrum | SAPI-1 V |
 |---|---|
-| BASIC: zavaděč, obrazovka, smyčka `RANDOMIZE USR 33890` | `sapi_init`: obrazovka ze `start_screen`, `POKE` z ř. 9500–9600, `USR 49500`, smyčka `call lines` |
-| obrazovka 4000h, atributy | buffer `zx_screen` + CGA-1V v režimu EGA (4 body a 4bitový kód barvy v bajtu) |
-| barva bodu = INK (papír je všude černý) | kód = BRIGHT × 8 + INK, paleta: pás × 32 + kód × 2 + bod |
+| BASIC: zavaděč, obrazovka, smyčka `RANDOMIZE USR 33890` | `sapi_init`: obrazovka `cga_screen`, `POKE` z ř. 9500–9600, `USR 49500`, smyčka `call lines` |
+| obrazovka 4000h s atributy | CGA-1V v režimu EGA (4 body a 4bitový kód barvy v bajtu), kreslí se do ní přímo |
 | výplň atributů řádků 0–15 (cyklování barev animace) | jedna položka palety (kód 8) v pásech 0–4 (`anim_colour`) |
-| ROM PLOT-SUB, DRAW-LINE (OVER 1) | `zx_plot`, `zx_draw_line`: stejný algoritmus, XOR do bufferu i do CGA |
+| ROM PLOT-SUB, DRAW-LINE (OVER 1) | `plot_xor`, `draw_xor`: stejný algoritmus čáry, XOR rovnou v CGA |
 | `ei`, `halt` před kreslením čáry | `wait_frame` (přerušení je tu rychlejší) |
+| VU metry (FEC4h) | `vu_cga`: stejné sloupce, mění se jen řádky mezi starou a novou výškou |
+| scroller (FF28h) | `scroll_cga`: plynule 2 body za snímek, barva podle písmene |
 | IM 2 na 50 Hz, ROM přerušení (FRAMES, klávesnice) | 82C54 čítač 2, 1300,7 Hz (`isr`): klávesnice, každé 26. přerušení snímek (50,03 Hz) |
 | KEY-SCAN | `key_scan`: kód klávesy, která je „dole“ (5 snímků, ENTER 30) |
 | AY: R13–R0 na FFFDh/BFFDh (`ay_write`) | `opl_update`: YM3812 kanály 0–2 tóny, 3 šum |
@@ -216,47 +216,53 @@ Y dočasně přepíše operand na C0EDh.
 
 ### Obraz
 
-- CGA-1V v režimu EGA: bajt = 4 body (D7..D4) + kód barvy (D3..D0) pro ty čtyři. Index barvy = pás (řádek CGA
-  / 32) × 32 + kód × 2 + bod. Obrazovka Spectra je uprostřed: 4 řádky shora, 8 bajtů (32 bodů) zleva.
-- Atributy v programu jsou jen 00h, 07h, 46h, 41h–47h a cyklování 42h–47h (změřeno v zx84), papír je vždy
-  černý. Kód barvy je proto BRIGHT × 8 + INK a paleta má v každém pásu bod 0 černý, bod 1 barvu kódu.
-- **Animace (řádky 0–15):** originál každý průchod vyplní 512 atributů jednou barvou. Tady mají tyto řádky kód 8
-  a mění se jen jeho barva v paletě (pásy 0–4, kód 8 jinde není).
-- **Scroller (řádek 23):** originál posouvá atributy o sloupec za snímek a do sloupce 30 dává další barvu
-  (41h–47h, perioda 7). Barva sloupce c je tedy barva sloupce 30 před 30 − c snímky. Sloupec c má pevný kód
-  9 + c mod 7 a těchto 7 kódů dostává v paletě (pásy 5 a 6) barvy sloupců 24–30. Výsledek je na obrazovce
-  stejný. Sloupce 0 a 31 mají INK 0, nevidí se, kopírují se jen sloupce 1–30 (`r23_line`, rozvinutý kód).
-- **Paleta se zapisuje se zakázaným přerušením.** Adresa a R, G, B jsou čtyři zápisy. Když hlavní smyčka
-  (`anim_colour`) zapisovala barvu animace a snímek ji přerušil zápisem barev scrolleru, dopsala svou barvu do
-  špatné položky palety. Pozadí jednoho kódu sloupce se obarvilo a v řádku 23 byly „čudlíky“ v každém 7.
-  sloupci. Najde je `tools/emu/block_check.py`: dříve 272 z 300 snímků, po opravě 0.
-- **VU metry** píšou přímo do CGA a mění jen řádky mezi starou a novou výškou sloupce (`vu_cga`).
-- Počáteční obrazovka (rámeček, nápis, texty) je zachycená z originálu v zx84 při `USR 49500`
-  (`tools/zx/capture_screen.py`), v portu RLE 2402 bajtů.
+- **CGA-1V v režimu EGA:** bajt = 4 body (D7..D4) + kód barvy (D3..D0) pro ty čtyři. Index barvy = pás (řádek
+  CGA / 32) × 32 + kód × 2 + bod. Bod 0 je všude černý, bod 1 má barvu kódu: kód = BRIGHT × 8 + INK jako na
+  Spectru (`rgb_table`). Obraz Spectra je uprostřed: 4 řádky shora, 8 bajtů (32 bodů) zleva.
+- **Počáteční obrazovka** (rámeček, nápis, texty) je zachycená z originálu v zx84 při `USR 49500`
+  (`tools/zx/capture_screen.py`). `tools/make_tables.py` ji při překladu převede na data CGA (`cga_screen`,
+  RLE 2154 bajtů).
+- **Animace čar:** body se invertují rovnou v CGA (`plot_xor`), algoritmus čáry je stejný jako v ROM (`draw_xor`).
+  Oblast animace má kód 8 a cyklování barev mění jeho barvu v paletě (pásy 0–4).
+- **Paleta se zapisuje se zakázaným přerušením.** Adresa a R, G, B jsou čtyři zápisy. Přerušení mezi nimi
+  posunulo adresu a barva animace se zapsala do špatné položky („čudlíky“ ve scrolleru v každém 7. sloupci,
+  verze a2bc3de a dřívější). `tools/emu/block_check.py` je hledá na snímcích CGA.
+- **Scroller:** text jede plynule 2 body za snímek sloupci 1–30 řádku 23, nové písmeno každé 4 snímky. Každé
+  písmeno má další z jasných barev 1–7 (originál posouval barvy o sloupec za snímek nezávisle na textu).
+  - Text je ve dvou pásech jako hotové bajty CGA (s kódem barvy). Pás A má bajt j = body 4j až 4j+3 textu,
+    pás B bajt j = body 4j+2 až 4j+5.
+  - Snímek jen zkopíruje 60 bajtů každé z 8 linek z pásu A (sudé snímky) nebo B (liché) do CGA (`LDI`
+    rozvinuté).
+  - Linka pásu je kruh 64 bajtů uložený dvakrát (j a j + 64), takže 60 bajtů od libovolného j je za sebou.
+  - Nové písmeno se zapíše do obou pásů 60 bajtů před okno (`scr_char`).
+- **VU metry:** stejné sloupce jako originál (bajt 7Eh na řádek, výška = hlasitost kanálu s tónem). Mění se jen
+  řádky mezi starou a novou výškou.
 
 ### Časování
 
 - Přerušení 1300,7 Hz (0,77 ms) kvůli klávesnici Consul 262.3 bez 7474 (STROBE je pulz 1 ms). Snímek
   originálu je každé 26. přerušení a běží s povoleným přerušením. Když snímek přijde, zatímco předchozí
   ještě běží, dožene se jen jeho tiknutí přehrávače (`ticks_owed`): hudba nezpomalí.
-- Práce snímku (`tools/emu/bench.py`, takty 4 MHz):
+- Práce snímku (`tools/emu/bench.py`, jeden snímek, takty 4 MHz):
 
 | Část | Takty |
 |---|---|
-| VU metry | asi 800 |
-| scroller (posun 2 × 8 × 31 RL rozvinutý, atributy, znak) | 11 300 |
-| přehrávač (tiknutí) | 3 900 |
-| YM3812 (`opl_update`, i návraty) | 8 900 |
-| řádek 23 do CGA s paletou | 25 400 |
-| **celkem** | 4 MHz: 13,3 ms z 20 ms; 2 MHz: 29 ms (snímky se zpožďují, hudba drží tempo) |
+| VU metry (jen změny) | asi 200 |
+| scroller (kopie 8 × 60 bajtů, písmeno každé 4 snímky) | asi 1 300–9 300 |
+| přehrávač (tiknutí) | asi 4 000 |
+| YM3812 (`opl_update`, F-number z tabulky) | asi 6 000 |
+| **průměr snímku** | 4 MHz: 5,7 ms (nejdelší 7,3 ms) z 20 ms; 2 MHz: 12,6 ms (nejdelší 20,2 ms) |
 
-- Originál na Spectru potřeboval na snímek asi 27 000 taktů (7,7 ms při 3,5 MHz). Zbytek času dostává animace
-  čar. Jeden bod čáry stojí v portu asi 330 taktů, v ROM podle odhadu z kódu asi 430.
+- Žádný snímek se v 10 s nezpozdí ani při 2 MHz.
+- **Animace čar:** při 4 MHz 18,6 nových čar za sekundu, originál v zx84 18,4. Při 2 MHz 10,4.
 
 ### Zvuk (AY-3-8912 → YM3812)
 
-- Tón AY: 1,7734 MHz / 16 / P = 110 837,5 / P Hz, stejná konstanta jako PSG MZ-800 ve Flappy (`ym_fnum`).
-  F-number = K / (P << blok), K = 23ABECh. Perioda pod 18 (nad 6 kHz) mlčí.
+- Tón AY: 1,7734 MHz / 16 / P = 110 837,5 / P Hz, stejná konstanta jako PSG MZ-800 ve Flappy.
+  F-number = K / (P << blok), K = 23ABECh.
+  - Perioda se posouvá doleva (blok), dokud není aspoň 2283. Pak se F-number vezme z `fnum_table`
+    (571 hodnot po 4).
+  - Perioda pod 18 (nad 6 kHz) mlčí.
 - Barva tónu: modulátor se zpětnou vazbou (bzučivý jako obdélník), nosná držená (jako Flappy).
 - Šum: jeden generátor pro všechny kanály. Kanál 3 YM3812 (modulátor ×15, zpětná vazba 7) dostane frekvenci
   110 837,5 / periody šumu (nad hranicí YM3812 hraje na maximu) a hlasitost nejhlasitějšího kanálu se
@@ -264,7 +270,7 @@ Y dočasně přepíše operand na C0EDh.
 - Tón i šum na jednom kanálu (AY dává tón AND šum): tón o 6 dB slabší.
 - Hlasitost 0–15 → TL po 3 dB (0 = klíč vypnutý). Hardwarovou obálku AY skladby nepoužívají.
 - YM3812 se zapisuje jen při změně a `opl_update` nedělá nic, když se R0–R10 nezměnily.
-- Je to přibližné a čeká to na poslech: `build\port_song_A.wav` (20 s skladby A z SAPIemu).
+- Autorovi zní dobře (`build\port_song_A.wav`, 20 s skladby A z SAPIemu).
 
 ## Poznámky pro port (původní rozbor)
 

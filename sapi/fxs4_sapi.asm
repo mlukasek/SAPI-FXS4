@@ -8,16 +8,9 @@
 	org 0100h
 	jp sapi_init			; SAPI: CP/M start
 
-; SAPI: the Spectrum screen (4000h-5AFFh) is a buffer in RAM, zx_screen, with the same layout;
-; platform.asm copies what changes to the CGA-1V (zx_flush_frame, zx_plot). The ROM routines
-; (KEY-SCAN, PLOT, DRAW) and the system variables are in platform.asm too.
-scr_r23_c31      equ zx_screen+10FFh
-scr_r23_c31_l7   equ zx_screen+17FFh
-attr_row23       equ zx_screen+1AE0h
-attr_row23_1     equ zx_screen+1AE1h
-attr_row23_2     equ zx_screen+1AE2h
-attr_row23_30    equ zx_screen+1AFEh
-attr_row23_31    equ zx_screen+1AFFh
+; SAPI: the screen is drawn on the CGA-1V directly by platform.asm: the start screen, the line
+; animation (plot_xor, draw_xor instead of ROM PLOT and DRAW), the VU meters (vu_cga) and the
+; scroller (scroll_cga). The Spectrum screen code of the original is left out.
 line_buf         equ LINE_BUF	; SAPI: was the printer buffer 5B00h, must start a page
 sv_frames        equ frames	; SAPI: was FRAMES (5C78h), counted by the ROM interrupt
 
@@ -278,7 +271,7 @@ L8521:	push bc                          ; 8521
 	add a,30h                              ; 8524
 	ld b,a                                 ; 8526
 	call wait_frame                        ; 8527  SAPI: was ei, halt (the interrupt is faster here)
-	call zx_plot                           ; 8529  SAPI: was ROM PLOT-SUB
+	call plot_xor                          ; 8529  SAPI: was ROM PLOT-SUB
 	pop de                                 ; 852C
 	pop bc                                 ; 852D
 	ld hl,0101h                            ; 852E
@@ -293,7 +286,7 @@ L8521:	push bc                          ; 8521
 L853D:	ld b,a                           ; 853D
 	push hl                                ; 853E
 	pop de                                 ; 853F
-	call zx_draw_line                      ; 8540  SAPI: was ROM DRAW-LINE
+	call draw_xor                          ; 8540  SAPI: was ROM DRAW-LINE
 	ret                                    ; 8543
 move_y:	bit 6,(hl)                      ; 8544
 	ld b,0FFh                              ; 8546
@@ -5450,8 +5443,8 @@ isr_body:	nop                           ; C180
 	nop                                    ; C181
 	nop                                    ; C182
 	nop                                    ; C183
-	call vu_cga                            ; C184  SAPI: vu_meters, writing to the CGA
-	call scroller                          ; C187
+	call vu_cga                            ; C184  SAPI: was vu_meters (Spectrum screen)
+	call scroll_cga                        ; C187  SAPI: was scroller (Spectrum screen)
 	jp frame                               ; C18A
 ; SAPI: unused (115 zero bytes at C18Dh) left out
 ; SAPI: no IM 2 vector table (C200h-C301h) and no gap after it
@@ -10380,127 +10373,15 @@ env_FEBB:	defb 0Ch,0FFh                 ; FEBB
 	defb 80h                               ; FEBD  jump (never reached)
 	defw env_FEBB                          ; FEBE
 	defb 00h,00h,00h,00h                   ; FEC0
-; VU meters: bars of the channel volumes
-vu_meters:	ld b,0Fh                     ; FEC4
-	ld hl,vu_rows                          ; FEC6
-LFEC9:	ld e,(hl)                        ; FEC9
-	inc hl                                 ; FECA
-	ld d,(hl)                              ; FECB
-	inc hl                                 ; FECC
-	xor a                                  ; FECD
-	ld (de),a                              ; FECE
-	inc e                                  ; FECF
-	inc e                                  ; FED0
-	ld (de),a                              ; FED1
-	inc e                                  ; FED2
-	inc e                                  ; FED3
-	ld (de),a                              ; FED4
-	djnz LFEC9                             ; FED5
-	ld b,03h                               ; FED7
-LFED9:	push bc                          ; FED9
-	ld hl,vu_base                          ; FEDA
-	ld de,0014h                            ; FEDD
-LFEE0:	add hl,de                        ; FEE0
-	djnz LFEE0                             ; FEE1
-	ld a,(hl)                              ; FEE3
-	inc hl                                 ; FEE4
-	or (hl)                                ; FEE5
-	inc hl                                 ; FEE6
-	jr z,LFF02                             ; FEE7
-	ld a,(hl)                              ; FEE9
-	and 0Fh                                ; FEEA
-	jr z,LFF02                             ; FEEC
-	ld b,a                                 ; FEEE
-	pop af                                 ; FEEF
-	push af                                ; FEF0
-	dec a                                  ; FEF1
-	add a,a                                ; FEF2
-	ld c,a                                 ; FEF3
-	ld hl,vu_rows                          ; FEF4
-LFEF7:	ld a,(hl)                        ; FEF7
-	inc hl                                 ; FEF8
-	ld d,(hl)                              ; FEF9
-	inc hl                                 ; FEFA
-	add a,c                                ; FEFB
-	ld e,a                                 ; FEFC
-	ld a,7Eh                               ; FEFD
-	ld (de),a                              ; FEFF
-	djnz LFEF7                             ; FF00
-LFF02:	pop bc                           ; FF02
-	djnz LFED9                             ; FF03
-	ret                                    ; FF05
-; SAPI: Spectrum screen addresses -> zx_screen
-vu_rows:	defw zx_screen+16BAh                     ; FF06
-	defw zx_screen+14BAh                             ; FF08
-	defw zx_screen+12BAh                             ; FF0A
-	defw zx_screen+10BAh                             ; FF0C
-	defw zx_screen+169Ah                             ; FF0E
-	defw zx_screen+149Ah                             ; FF10
-	defw zx_screen+129Ah                             ; FF12
-	defw zx_screen+109Ah                             ; FF14
-	defw zx_screen+167Ah                             ; FF16
-	defw zx_screen+147Ah                             ; FF18
-	defw zx_screen+127Ah                             ; FF1A
-	defw zx_screen+107Ah                             ; FF1C
-	defw zx_screen+165Ah                             ; FF1E
-	defw zx_screen+145Ah                             ; FF20
-	defw zx_screen+125Ah                             ; FF22
+; SAPI: the VU meters (FEC4h-FF05h, bars of 7Eh at the screen addresses of vu_rows FF06h) are
+; vu_cga in platform.asm
 text_start:	defw scroll_text            ; FF24
 text_ptr:	defw L7554                    ; FF26
-; Scroller in character row 23 (2 pixels per frame, a new character every 4 frames)
-scroller:	ld hl,attr_row23_2            ; FF28
-	ld de,attr_row23_1                     ; FF2B
-	ld bc,001Dh                            ; FF2E
-	ldir                                   ; FF31
-	xor a                                  ; FF33
-	ld (attr_row23),a                      ; FF34
-	ld (attr_row23_31),a                   ; FF37
-	ld a,(attr_row23_30)                   ; FF3A
-	inc a                                  ; FF3D
-	and 07h                                ; FF3E
-	jr nz,LFF43                            ; FF40
-	inc a                                  ; FF42
-LFF43:	or 40h                           ; FF43
-	ld (attr_row23_30),a                   ; FF45
-; SAPI: the same rotation (2 x 8 lines x columns 31-1 with RL, carry from line to line),
-; unrolled in scroll_pixels (platform.asm): the loop took 16000 T
-	call scroll_pixels                     ; FF48
-	ld a,(scroll_count)                    ; FF60
-	inc a                                  ; FF63
-	and 03h                                ; FF64
-	ld (scroll_count),a                    ; FF66
-	ret nz                                 ; FF69
-	ld hl,(text_ptr)                       ; FF6A
-LFF6D:	ld a,(hl)                        ; FF6D
-	cp 0FFh                                ; FF6E
-	jr nz,LFF77                            ; FF70
-	ld hl,(text_start)                     ; FF72
-	jr LFF6D                               ; FF75
-LFF77:	inc hl                           ; FF77
-	ld (text_ptr),hl                       ; FF78
-	ld l,a                                 ; FF7B
-	ld h,00h                               ; FF7C
-	add hl,hl                              ; FF7E
-	add hl,hl                              ; FF7F
-	add hl,hl                              ; FF80
-	ld de,(sv_chars)                       ; FF81
-	add hl,de                              ; FF85
-	ld de,scr_r23_c31                      ; FF86
-	ld b,08h                               ; FF89
-LFF8B:	ld a,(hl)                        ; FF8B
-	nop                                    ; FF8C
-	nop                                    ; FF8D
-	or (hl)                                ; FF8E
-	ld (de),a                              ; FF8F
-	inc hl                                 ; FF90
-	inc d                                  ; FF91
-	djnz LFF8B                             ; FF92
-	ret                                    ; FF94
-; SAPI: the rests of a font at FF95h-FFF2h left out; FFF4h-FFFFh (IM 2 jump) are not used
-scroll_count:	defb 03h                  ; FFF3
-im2_jp:	defb 0C3h                       ; FFF4
-im2_jp_addr:	defb 0C4h,0C3h,00h,00h,42h,42h,42h,42h,42h,3Ch; FFF5
-im2_jr:	defb 18h                        ; FFFF
+; SAPI: the scroller (FF28h-FF94h: row 23 shifted 2 pixels a frame, a new character every 4
+; frames, colours shifted a column a frame) is scroll_cga in platform.asm; text_start and
+; text_ptr above are its variables
+; SAPI: the rests of a font (FF95h-FFF2h), the counter of the scroller (FFF3h) and the IM 2 jump
+; (FFF4h-FFFFh) are left out
 
 	include "platform.asm"			; SAPI
 	include "tables.asm"			; SAPI
