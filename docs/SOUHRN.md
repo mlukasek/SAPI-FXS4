@@ -28,6 +28,7 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 | zx84 | `..\zx84` + Node.js (`C:\Program Files\nodejs`), v `..\zx84` jednou `npm install` | originál: srovnání AY, záznam kódu, zachycení obrazovky |
 | z88dk-dis | `..\Tools\z88dk\bin\z88dk-dis.exe` | jen pro ruční prohlížení kódu, skripty ho nepotřebují |
 
+- **Na skutečný počítač** se `.com` přenáší přes sériovou linku XMODEMem (`DOCPM.COM` v CP/M sestavy V).
 - **Překlad portu:** `build.cmd` → `build\fxs4.com`, `build\fxs4.hex`. Na to stačí Python a pasmo. Data
   obrazovky jsou v repu (`tools/zx_start_screen.bin`), zx84 netřeba.
 - **SAPIemu pro skripty:** ve složce `..\SAPIemu-release` spustit na pozadí
@@ -82,7 +83,7 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 
 ## Další kroky a nápady
 
-- Sněžení CGA-1V na skutečné desce: vyzkoušet `fxs4.hex` (paleta v zatemnění) a případně `fxs4diag.hex`
+- Sněžení CGA-1V na skutečné desce: vyzkoušet `fxs4.com` (paleta v zatemnění) a případně `fxs4diag.com`
   (viz Nejasnosti).
 - Zvuk: jen když bude autor chtít jinou barvu tónu nebo šumu. Nápady jsou šum přes rytmický režim YM3812
   nebo jiná křivka hlasitosti AY. Všechno je v `opl_update` a `ym_regs` (`sapi/platform.asm`).
@@ -100,9 +101,9 @@ Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po p
   - Možné příčiny: zápisy do palety Bt476 během kreslení (port je dělal každý snímek kdykoli), nebo přístupy
     CPU do videoram (scroller 480 bajtů za snímek, body čar, VU metry), kdyby čekání CPU na okno nestačilo.
   - **Zkouška na HW:**
-    1. `build\fxs4.hex`: paleta se už zapisuje jen v zatemnění (VBI ve STATUS D7). Když nesněží, byla
+    1. `build\fxs4.com`: paleta se už zapisuje jen v zatemnění (VBI ve STATUS D7). Když nesněží, byla
        příčinou paleta.
-    2. Když sněží dál, `build\fxs4diag.hex` (`build.cmd diag`): za běhu nic nekreslí, jen hraje a mění
+    2. Když sněží dál, `build\fxs4diag.com` (`build.cmd diag`): za běhu nic nekreslí, jen hraje a mění
        paletu v zatemnění. Když tahle verze nesněží, sněžení dělají přístupy CPU do videoram (otázka na
        CGA-1V a čekací stavy). Když sněží i tahle, jde o něco jiného (třeba samotné čtení STATUS
        nebo zápis CONFIG).

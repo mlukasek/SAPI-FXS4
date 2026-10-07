@@ -11,10 +11,12 @@ text s Fukovým komentářem ke skladbám a básněmi Ernsta Jandla.
 
 ## Spuštění
 
-1. Přeložit (`build.cmd`, viz níže), nebo vzít hotový `build\fxs4.hex`.
-2. V SAPIemu (sestava `machines/sapi1v.sapi`) nebo na skutečné sestavě V nabootovat CP/M.
-3. Nahrát `fxs4.hex` do paměti od 0100h (v SAPIemu: Soubor → Nahrát program do paměti).
-4. V CP/M uložit `SAVE 158 FXS4.COM` a spustit `FXS4`.
+Přeložit (`build.cmd`, viz níže) a dostat program do CP/M sestavy V:
+
+- **Skutečný počítač:** přenést `build\fxs4.com` přes sériovou linku XMODEMem (autor používá `DOCPM.COM`)
+  a spustit `FXS4`.
+- **SAPIemu** (sestava `machines/sapi1v.sapi`): Soubor → Nahrát program do paměti (`build\fxs4.hex`, od
+  0100h), v CP/M `SAVE 158 FXS4.COM` a spustit `FXS4`.
 
 Obraz je na výstupu CGA-1V, zvuk na MPH-1V. Program běží při 4 i 2 MHz (propojka TURBO na JPR-1V).
 
