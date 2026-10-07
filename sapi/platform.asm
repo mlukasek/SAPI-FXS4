@@ -238,7 +238,7 @@ isr_work:
 	call key_frame
 	ld a,(music_on)
 	or a
-	call nz,isr_body
+	call nz,isr_body		; (frame_play runs with interrupts enabled too)
 frame_end:
 isr_owed:				; ticks of the frames that came meanwhile:
 	di				; the music does not slow down

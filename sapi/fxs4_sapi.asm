@@ -5416,7 +5416,8 @@ frame_play:	pop de                      ; C0F8
 	call key_scan                          ; C103  SAPI: was ROM KEY-SCAN
 	ld a,e                                 ; C106
 	cp 21h                                 ; C107
-	di                                     ; C109
+; SAPI: no DI here (C109h). With ENTER the two extra ticks ran with interrupts disabled and the
+; interrupt came late to the vertical blank: palette writes in the picture (snow at the top).
 	push af                                ; C10A
 	call z,tick                            ; C10B
 	pop af                                 ; C10E

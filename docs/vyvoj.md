@@ -216,7 +216,9 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
   - Rychlé přerušení (1,3 kHz) čte STATUS CGA-1V (D7 = začátek zatemnění, 60 Hz). Když je nastavený, potvrdí
     ho (CONFIG D7 = 1) a zapíše změny. Zatemnění trvá asi 4 ms (125 řádků), zápis 19 položek se vejde.
   - Důvod: na skutečné CGA-1V obraz „sněžil“ po celé obrazovce. Zápis do RAMDACu během kreslení ruší obraz
-    tam, kde je zrovna paprsek.
+    tam, kde je zrovna paprsek. Po opravě nesněží (ověřil autor na HW).
+  - **Žádné dlouhé `DI`:** přerušení musí na zatemnění přijít včas. `DI` v `frame_play` (C109h, před
+    tiknutími navíc s ENTER) je proto pryč: s ním lehce sněžilo nahoře při mačkání ENTER.
   - Paletu tak zapisuje jen přerušení, takže dřívější souběh hlavní smyčky s přerušením (adresa a R, G, B jsou
     čtyři zápisy, „čudlíky“ ve scrolleru do a2bc3de) už nastat nemůže. `tools/emu/block_check.py` je hledá
     na snímcích CGA.
@@ -289,7 +291,8 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
 
 - **pasmo:** lokální návěští `.x` jsou globální, unární minus na začátku výrazu neguje celý zbytek (viz
   globální CLAUDE.md). `jr` přes rozvinuté `LDI` (`rept 60`) nedosáhne, je tam `jp`.
-- **Paleta CGA-1V** (adresa a R, G, B) se smí z hlavní smyčky zapisovat jen se zakázaným přerušením (viz Obraz).
+- **Paleta CGA-1V** se smí zapisovat jen v zatemnění (`pal_flush` z přerušení), jinak na skutečné desce
+  „sněží“. Přerušení proto nesmí být dlouho zakázané (viz Obraz).
 - **Klávesy:** KEY-SCAN 20h = SPACE, 21h = ENTER. Animace testuje kód + 1 = 21h, tedy SPACE (dřív v komentářích
   omylem ENTER).
 - **Stav kanálů z TAP:** bloky kanálů v obrazu obsahují ukazatele z poslední hrané skladby. Žádná skladba je

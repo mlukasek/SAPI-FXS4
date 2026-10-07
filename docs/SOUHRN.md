@@ -12,8 +12,10 @@ popis pro uživatele v `README.md`.
   - registry AY přehrávače portu sedí tick po ticku s modelem `tools/player.py`;
   - model sedí s originálem v zx84 u všech 27 skladeb na 15 000 tiknutích.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
-- **Na skutečné sestavě V funguje** (ověřil autor 2026-10-07). Jediný rozdíl proti emulátoru: CGA-1V lehce
-  „sněží“ (viz Nejasnosti).
+- **Na skutečné sestavě V funguje** (ověřil autor 2026-10-07).
+  - CGA-1V „sněžila“ po celé obrazovce kvůli zápisům do palety během kreslení. Paleta se teď zapisuje
+    v zatemnění a nesněží.
+  - Zbytek při mačkání ENTER je opravený, zatím neověřený na HW (viz Nejasnosti).
 - Repo `mlukasek/SAPI-FXS4`: commity jsou jen lokálně, push jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
@@ -84,8 +86,7 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 
 ## Další kroky a nápady
 
-- Sněžení CGA-1V na skutečné desce: vyzkoušet `fxs4.com` (paleta v zatemnění) a případně `fxs4diag.com`
-  (viz Nejasnosti).
+- Ověřit na HW, že při mačkání ENTER už nesněží (viz Nejasnosti).
 - Zvuk: jen když bude autor chtít jinou barvu tónu nebo šumu. Nápady jsou šum přes rytmický režim YM3812
   nebo jiná křivka hlasitosti AY. Všechno je v `opl_update` a `ym_regs` (`sapi/platform.asm`).
 - 2 MHz: animace čar je pomalejší (10,4 čáry/s proti 18,4 na Spectru). Zrychlit by šla `plot_xor`
@@ -96,18 +97,16 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po pásech, přerušení z MPH-1V na
 1300,7 Hz, klávesnice, zvuk YM3812.
 
+Paleta Bt476 se smí měnit jen v zatemnění: zápisy během kreslení dělaly „sníh“ po celé obrazovce. Port ji
+zapisuje, když STATUS CGA-1V hlásí zatemnění (D7). Diagnostická verze, která za běhu nekreslí do videoram
+(`build.cmd diag`), nesněžila taky, takže přístupy CPU do videoram obraz neruší.
+
 ## Nejasnosti k ověření na HW
 
-- **CGA-1V lehce „sněží“ po celé obrazovce** (autor, verze 3498458). V SAPIemu se to neprojeví.
-  - Možné příčiny: zápisy do palety Bt476 během kreslení (port je dělal každý snímek kdykoli), nebo přístupy
-    CPU do videoram (scroller 480 bajtů za snímek, body čar, VU metry), kdyby čekání CPU na okno nestačilo.
-  - **Zkouška na HW:**
-    1. `build\fxs4.com`: paleta se už zapisuje jen v zatemnění (VBI ve STATUS D7). Když nesněží, byla
-       příčinou paleta.
-    2. Když sněží dál, `build\fxs4diag.com` (`build.cmd diag`): za běhu nic nekreslí, jen hraje a mění
-       paletu v zatemnění. Když tahle verze nesněží, sněžení dělají přístupy CPU do videoram (otázka na
-       CGA-1V a čekací stavy). Když sněží i tahle, jde o něco jiného (třeba samotné čtení STATUS
-       nebo zápis CONFIG).
+- **Sněžení CGA-1V při mačkání ENTER:** po opravě palety (4ebca60) už obraz nesněží, ani diagnostická verze.
+  Jen při zuřivém mačkání ENTER lehce sněžilo v horní části obrazovky. Příčina: `frame_play` originálu dával
+  před dvěma tiknutími navíc `DI`, přerušení přišlo na zatemnění pozdě a paleta se zapsala až v obraze (nahoře).
+  `DI` je pryč (verze po 6d85f6b), na HW zatím neověřeno.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru
