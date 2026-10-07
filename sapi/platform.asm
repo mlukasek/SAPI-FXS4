@@ -639,8 +639,10 @@ vu_row:
 ; ---- scroll_cga
 ; Scroller (scroller of the original, FF28h): the text moves 2 pixels a
 ; frame through columns 1-30 of row 23, a new character every 4 frames.
-; Each character gets the next of the bright colours 1-7 (the original
-; shifted the colours one column a frame instead).
+; The characters get the colour codes 9-15 in turn and every frame the
+; colours of these codes move one code on in the palette (scr_rainbow):
+; the rainbow runs to the left one character a frame, faster than the
+; text (the original shifted the colours one column a frame).
 ;
 ; Two strips hold the text as CGA bytes (4 pixels + colour code): strip
 ; A byte j = pixels 4j to 4j+3 of the text, strip B byte j = pixels 4j+2
@@ -682,6 +684,47 @@ sc_line:
 	jp nz,sc_line
 	ld hl,scr_frame
 	inc (hl)
+; ---- scr_rainbow
+; Codes 9-15 in bands 5 and 6 (CGA lines 160-199, only the scroller uses
+; them there): code 9 + k gets bright colour 1 + (k + scr_rot) mod 7.
+scr_rainbow:
+	ld a,(scr_rot)
+	inc a
+	cp 7
+	jr c,sr_rot
+	xor a
+sr_rot:
+	ld (scr_rot),a
+	ld c,a				; C = (k + rot) mod 7 for k = 0
+	ld b,0				; B = k
+sr_code:
+	ld a,c				; HL = rgb_table + 3 * (9 + C)
+	add a,9
+	ld l,a
+	add a,a
+	add a,l
+	ld e,a
+	ld d,0
+	ld hl,rgb_table
+	add hl,de
+	ld a,b				; entry 5 * 32 + (9 + k) * 2 + 1
+	add a,a
+	add a,5*32+9*2+1
+	call pal_rgb
+	ld a,b				; band 6
+	add a,a
+	add a,6*32+9*2+1
+	call pal_rgb
+	inc c
+	ld a,c
+	cp 7
+	jr c,sr_c
+	ld c,0
+sr_c:
+	inc b
+	ld a,b
+	cp 7
+	jr nz,sr_code
 	ret
 
 ; ---- scr_char
@@ -1166,6 +1209,7 @@ song_mark:	defb 0			; written by the 8Ch calls of song Y
 coords:		defw 0			; COORDS (5C7Dh): x, y of the last point
 scr_frame:	defb 0			; scroller: frames
 scr_code:	defb 8			; scroller: colour code of the last character
+scr_rot:	defb 0			; scroller: rotation of the rainbow (0-6)
 page0_save:	defs 3
 vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
 

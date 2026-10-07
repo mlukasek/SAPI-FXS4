@@ -207,7 +207,7 @@ změny. Obraz se kreslí přímo na CGA-1V vlastními rutinami: na první pohled
 | ROM PLOT-SUB, DRAW-LINE (OVER 1) | `plot_xor`, `draw_xor`: stejný algoritmus čáry, XOR rovnou v CGA |
 | `ei`, `halt` před kreslením čáry | `wait_frame` (přerušení je tu rychlejší) |
 | VU metry (FEC4h) | `vu_cga`: stejné sloupce, mění se jen řádky mezi starou a novou výškou |
-| scroller (FF28h) | `scroll_cga`: plynule 2 body za snímek, barva podle písmene |
+| scroller (FF28h) | `scroll_cga`: plynule 2 body za snímek, duha přes paletu (o písmeno za snímek) |
 | IM 2 na 50 Hz, ROM přerušení (FRAMES, klávesnice) | 82C54 čítač 2, 1300,7 Hz (`isr`): klávesnice, každé 26. přerušení snímek (50,03 Hz) |
 | KEY-SCAN | `key_scan`: kód klávesy, která je „dole“ (5 snímků, ENTER 30) |
 | AY: R13–R0 na FFFDh/BFFDh (`ay_write`) | `opl_update`: YM3812 kanály 0–2 tóny, 3 šum |
@@ -227,8 +227,10 @@ změny. Obraz se kreslí přímo na CGA-1V vlastními rutinami: na první pohled
 - **Paleta se zapisuje se zakázaným přerušením.** Adresa a R, G, B jsou čtyři zápisy. Přerušení mezi nimi
   posunulo adresu a barva animace se zapsala do špatné položky („čudlíky“ ve scrolleru v každém 7. sloupci,
   verze a2bc3de a dřívější). `tools/emu/block_check.py` je hledá na snímcích CGA.
-- **Scroller:** text jede plynule 2 body za snímek sloupci 1–30 řádku 23, nové písmeno každé 4 snímky. Každé
-  písmeno má další z jasných barev 1–7 (originál posouval barvy o sloupec za snímek nezávisle na textu).
+- **Scroller:** text jede plynule 2 body za snímek sloupci 1–30 řádku 23, nové písmeno každé 4 snímky.
+  - Písmena dostávají po řadě kódy barev 9–15.
+  - Každý snímek se barvy těchto kódů v paletě (pásy 5 a 6) posunou o jeden kód (`scr_rainbow`), takže duha
+    přebíhá doleva o písmeno za snímek, rychleji než text. Originál posouval barvy o sloupec za snímek.
   - Text je ve dvou pásech jako hotové bajty CGA (s kódem barvy). Pás A má bajt j = body 4j až 4j+3 textu,
     pás B bajt j = body 4j+2 až 4j+5.
   - Snímek jen zkopíruje 60 bajtů každé z 8 linek z pásu A (sudé snímky) nebo B (liché) do CGA (`LDI`
