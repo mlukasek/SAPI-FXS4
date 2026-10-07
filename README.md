@@ -82,7 +82,8 @@ Podle Fukova rolujícího textu:
 - **Originál:** `Demos/FXSOUND4.TAP`, ZX Spectrum 48K s AY (128K nebo Melodik). Autor František Fuka (Fuxoft).
 - **Port:** Martin Lukášek s Claude (2026). Ze strojového kódu originálu je udělaný symbolický disassembler
   (`orig/fxs4.asm`). Port je jeho kopie se změnami a vlastní obsluhou hardwaru SAPI.
-- **Stav:** hotové a ověřené v emulátoru SAPIemu. Na skutečném HW zatím nevyzkoušeno.
+- **Stav:** hotové, ověřené v emulátoru SAPIemu i na skutečné sestavě V. Na skutečné CGA-1V obraz lehce
+  „sněží“.
 
 ## Překlad
 

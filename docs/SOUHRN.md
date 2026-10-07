@@ -12,7 +12,8 @@ popis pro uživatele v `README.md`.
   - registry AY přehrávače portu sedí tick po ticku s modelem `tools/player.py`;
   - model sedí s originálem v zx84 u všech 27 skladeb na 15 000 tiknutích.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
-- **Na skutečném HW zatím nevyzkoušeno** (viz Nejasnosti).
+- **Na skutečné sestavě V funguje** (ověřil autor 2026-10-07). Jediný rozdíl proti emulátoru: CGA-1V lehce
+  „sněží“ (viz Nejasnosti).
 - Repo `mlukasek/SAPI-FXS4`: commity jsou jen lokálně, push jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
@@ -81,18 +82,30 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 
 ## Další kroky a nápady
 
-- Vyzkoušet na skutečné sestavě V (viz Nejasnosti) a podle výsledku upravit.
+- Sněžení CGA-1V na skutečné desce: zjistit, kde a kdy sněží, a podle toho upravit (viz Nejasnosti).
 - Zvuk: jen když bude autor chtít jinou barvu tónu nebo šumu. Nápady jsou šum přes rytmický režim YM3812
   nebo jiná křivka hlasitosti AY. Všechno je v `opl_update` a `ym_regs` (`sapi/platform.asm`).
 - 2 MHz: animace čar je pomalejší (10,4 čáry/s proti 18,4 na Spectru). Zrychlit by šla `plot_xor`
   (rychlejší výpočet adresy bodu, například tabulky zarovnané na stránky).
 
+## Ověřeno na HW (2026-10-07, autor)
+
+Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po pásech, přerušení z MPH-1V na
+1300,7 Hz, klávesnice, zvuk YM3812.
+
 ## Nejasnosti k ověření na HW
 
-- CGA-1V v režimu EGA (CONFIG D2 = 0, COLMASK FFh) s paletou po pásech 32 řádků a změnami palety za běhu.
-- Přerušení F2 z MPH-1V přes /INT0 na JPR-1V v IM 1 (RST 38h) na 1300,7 Hz, potvrzení IACK (`OUT 55h,80h`).
-- Klávesnice Consul 262.3 bez 7474: stačí čtení STROBE každých 0,77 ms?
-- Rychlost a zvuk na skutečné desce (YM3812: 3,3 µs po adrese, 23 µs po datech).
+- **CGA-1V lehce „sněží“.** V SAPIemu se to neprojeví (emulátor nechá CPU čekat na jeho okno a paletu
+  nekreslí po bodech). Možné příčiny, zatím neověřené:
+  - zápisy do palety Bt476 během zobrazování: port je dělá každý snímek (duha scrolleru 14 položek, barva
+    animace 5 položek) bez ohledu na zatemnění CGA (60 Hz, VBI ve STATUS D7). RAMDACy při zápisu palety
+    během kreslení obvykle krátce ruší obraz;
+  - přístupy CPU do videoram (scroller 480 bajtů za snímek, body čar, VU metry), kdyby čekání CPU na okno
+    na desce nestačilo.
+  - Pomůže zjistit, kde sněží: jen v řádcích scrolleru a animace (paleta), nebo všude, kde se kreslí
+    (videoram).
+- Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
+  stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru
   Spectaculator hraje na 128K i na 48K s Melodikem (ověřil autor), na skutečném HW to ověřené není. Na port
   to vliv nemá.
