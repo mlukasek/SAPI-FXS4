@@ -381,6 +381,9 @@ pi_code:
 ; A = Spectrum attribute of rows 0-15 (the original filled 5800h-59FFh
 ; with it): the colour of code ANIM_CODE in the bands of those rows
 ; (CGA lines CGA_TOP to CGA_TOP + 127: bands 0-4). Keeps BC, DE, HL.
+; Runs in the main loop: an interrupt between the palette address and
+; R, G, B would write its own entries (zx_flush_frame) and this colour
+; would land in a wrong entry, so each entry is written with DI.
 anim_colour:
 	push bc
 	push de
@@ -393,25 +396,24 @@ anim_colour:
 	ld d,0
 	ld hl,zx_rgb
 	add hl,de
+	ld a,i				; P/V = IFF2: were interrupts enabled?
+	push af
 	ld c,ANIM_CODE*2+1
 	ld b,5
 ac_band:
+	di
 	ld a,c
-	ld (CGA_PAL_ADDR),a
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	inc hl
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	inc hl
-	ld a,(hl)
-	ld (CGA_PAL_DATA),a
-	dec hl
-	dec hl
+	call pal_rgb
+	pop af				; EI again if they were enabled
+	push af
+	jp po,ac_di
+	ei
+ac_di:
 	ld a,c
 	add a,32
 	ld c,a
 	djnz ac_band
+	pop af
 	pop hl
 	pop de
 	pop bc

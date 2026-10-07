@@ -1,4 +1,4 @@
-"""Minimal client of the SAPIemu MCP server (JSON-RPC over HTTP POST).
+r"""Minimal client of the SAPIemu MCP server (JSON-RPC over HTTP POST).
 
 URL: environment variable SAPIEMU_MCP, default http://127.0.0.1:8592/mcp (sapiemu-cli --machine machines/sapi1v.sapi --mcp --mcp-port 8592 in ..\SAPIemu-release;
 the GUI listens on 8580). Command line: python sapimcp.py TOOL '{"arg": value}'

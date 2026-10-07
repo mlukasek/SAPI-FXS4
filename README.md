@@ -43,6 +43,7 @@ sestavu V (JPR-1V, RAM-1V, CGA-1V, MPH-1V), jako CP/M `.COM`.
 | `tools/emu/sapimcp.py`, `port.py` | klient MCP SAPIemu, start portu v CP/M a snímek CGA-1V |
 | `tools/emu/ay_check.py` | registry AY portu v SAPIemu proti `player.py` |
 | `tools/emu/bench.py` | doba práce snímku po částech při 4 a 2 MHz |
+| `tools/emu/block_check.py` | hledá barevné bloky ve scrolleru na snímcích CGA-1V (chybná položka palety) |
 
 Příkazy (Python 3, pasmo v `E:\SAPI_GIT\Tools\pasmo-0.5.3\pasmo.exe` nebo v proměnné `PASMO`):
 
@@ -225,6 +226,10 @@ Y dočasně přepíše operand na C0EDh.
   (41h–47h, perioda 7). Barva sloupce c je tedy barva sloupce 30 před 30 − c snímky. Sloupec c má pevný kód
   9 + c mod 7 a těchto 7 kódů dostává v paletě (pásy 5 a 6) barvy sloupců 24–30. Výsledek je na obrazovce
   stejný. Sloupce 0 a 31 mají INK 0, nevidí se, kopírují se jen sloupce 1–30 (`r23_line`, rozvinutý kód).
+- **Paleta se zapisuje se zakázaným přerušením.** Adresa a R, G, B jsou čtyři zápisy. Když hlavní smyčka
+  (`anim_colour`) zapisovala barvu animace a snímek ji přerušil zápisem barev scrolleru, dopsala svou barvu do
+  špatné položky palety. Pozadí jednoho kódu sloupce se obarvilo a v řádku 23 byly „čudlíky“ v každém 7.
+  sloupci. Najde je `tools/emu/block_check.py`: dříve 272 z 300 snímků, po opravě 0.
 - **VU metry** píšou přímo do CGA a mění jen řádky mezi starou a novou výškou sloupce (`vu_cga`).
 - Počáteční obrazovka (rámeček, nápis, texty) je zachycená z originálu v zx84 při `USR 49500`
   (`tools/zx/capture_screen.py`), v portu RLE 2402 bajtů.
