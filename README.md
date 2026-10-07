@@ -162,3 +162,5 @@ Y dočasně přepíše operand na C0EDh.
 ## Nejasnosti k ověření na HW
 
 - Hraje originál na 48K s interfacem Melodik? Podle kódu ano: používá jen porty FFFDh a BFFDh, 7FFDh ne.
+  V emulátoru Spectaculator (48K s AY) hraje, ověřil autor. Na skutečném HW to ověřené není.
+  Na port to vliv nemá.

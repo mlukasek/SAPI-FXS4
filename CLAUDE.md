@@ -38,7 +38,7 @@ nebo 48K s interfacem Melodik.
   - Jediné místo výstupu do AY je `ay_write` (C585h). V každém tiknutí (50 Hz, přerušení IM 2) zapíše
     R13 až R0 ze stínové kopie `ay_regs` (C3E6h) přes porty FFFDh a BFFDh.
   - Hardwarová obálka AY se nepoužívá.
-  - Na port 7FFDh program nesahá, proto by měl hrát i na 48K s Melodikem (neověřeno na HW).
+  - Na port 7FFDh program nesahá, proto by měl hrát i na 48K s Melodikem (v emulátoru Spectaculator ověřeno, na HW ne; na port to vliv nemá).
 - **Data skladeb:**
   - Jsou plně symbolická (`song_X`, `nt_`, `env_`, `fx_`), takže je jde přestěhovat.
   - Je jich 27: 26 na klávesách A–Z a jedna skrytá na A4A6h, kterou žádná klávesa nevybírá.
