@@ -173,11 +173,12 @@ class Dis:
         prev = False
         for a in range(65536):
             x = a in self.xs
-            if x and not prev and in_seg(a):
+            if x and not prev and in_seg(a) and a not in annot.DATA_FORCE:
                 seeds.append(a)
             prev = x
         self.descend(seeds)
-        self.uncovered = sorted(a for a in self.xs if in_seg(a) and a not in self.owner)
+        self.uncovered = sorted(a for a in self.xs if in_seg(a) and a not in self.owner
+                                and a not in annot.DATA_FORCE)
 
     # ---- labels
     def refs(self):

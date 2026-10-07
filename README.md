@@ -8,6 +8,8 @@ sestavu V (JPR-1V, RAM-1V, CGA-1V, MPH-1V), jako CP/M `.COM`.
 - Originál: `Demos/FXSOUND4.TAP`.
 - Hotový disassembler originálu: `orig/fxs4.asm`. Přeloží se bajt po bajtu stejně jako blok CODE
   (744Ah–FFFFh).
+- Model přehrávače `tools/player.py` je ověřený v emulátoru zx84. Všech 27 skladeb dává na
+  15 000 tiknutích (5 minut) stejné registry AY jako originál.
 - Port zatím nezačal.
 
 ## Soubory
@@ -20,6 +22,10 @@ sestavu V (JPR-1V, RAM-1V, CGA-1V, MPH-1V), jako CP/M `.COM`.
 | `tools/player.py` | model přehrávače v Pythonu: rozložení dat skladeb, záznam registrů AY po tiknutích |
 | `tools/z80dis.py` | dekodér Z80 (převzatý ze SAPI-Flappy) |
 | `tools/check_orig.py` | přeloží `orig/fxs4.asm` pasmem a porovná ho s TAP |
+| `tools/zx/zx84.py` | klient MCP emulátoru zx84 přes stdio (`..\zx84`, potřebuje Node.js a `npm install`) |
+| `tools/zx/boot.py` | spustí originál v zx84: 128K, 48 BASIC, `LOAD ""`, ENTER |
+| `tools/zx/ay_compare.py` | registry AY originálu v zx84 proti `player.py`, tick po ticku |
+| `tools/zx/exec_trace.py` | provedené adresy originálu v zx84 do `build/exec_zx84.txt` (čte `mkdis.py`) |
 
 Příkazy (Python 3, pasmo v `E:\SAPI_GIT\Tools\pasmo-0.5.3\pasmo.exe` nebo v proměnné `PASMO`):
 
@@ -30,7 +36,15 @@ python tools\mkdis.py report                rem konflikty, operandy brané jako 
 python tools\mkdis.py map                   rem úseky kódu a dat
 python tools\player.py cover                rem přehraje všechny skladby, hlásí konflikty v datech
 python tools\player.py log A 500            rem registry R0-R13 skladby A po tiknutích (50 Hz)
+python tools\zx\ay_compare.py 15000         rem všech 27 skladeb v zx84 proti modelu (asi 4 min)
+python tools\zx\ay_compare.py 500 AB --save rem jen A a B, registry z zx84 do build\ay_A.txt ...
+python tools\zx\exec_trace.py               rem provedené adresy, pak znovu mkdis.py asm a report
 ```
+
+zx84 nahrává pásku hned po resetu. `boot.py` proto vyrobí `build/fxs4_boot.tap`, v němž je před
+originálem prázdný blok (1500 B). Pásek se tak nedostane k originálu dřív, než se projde menu 128K
+a napíše `LOAD ""`. Skladby se v zx84 spouštějí klávesou. 27. skladba se spustí tak, že se během stisku
+Y dočasně přepíše operand na C0EDh.
 
 ## Originál
 
@@ -94,14 +108,26 @@ python tools\player.py log A 500            rem registry R0-R13 skladby A po tik
   - Příkaz 8Ch skladby Y volá 86AEh a 86AAh: `ld (0000h),a` s A = 1 nebo 2.
   - Na Spectru je na 0000h ROM, takže zápis nic nedělá.
   - Na SAPI je na 0000h RAM (CP/M), port to musí ošetřit.
+- **ROM jako efekt výšky:**
+  - `init_song` nuluje začátek efektu výšky (`+16/17`). Kanál, který nedostane příkaz 86h, proto čte
+    jako efekt výšky ROM od 0000h. Na začátku každé noty začne znovu od 0000h.
+  - Týká se to skladeb E, F a R. Čtou se bajty 0000–0026h, které jsou stejné v ROM 48K i v ROM 1
+    modelu 128K.
+  - `player.py` je má v `ROM_HEAD`. Port je potřebuje jako data a začátek efektu musí ukazovat na ně.
 
 ### Jak vznikl disassembler
 
 - **Kód:** rekurzivní sestup z `ENTRIES` v `annot.py`. Patří k nim i obsluhy příkazů 80h–8Eh, které se
   volají přes tabulku skoků a `push`/`ret`.
-  - Záznam provedeného kódu z emulátoru zatím není: na tomto PC chybí Node.js pro zx84 a překladač C pro
-    zx-spectrum-mcp.
-  - `mkdis.py` ho umí načíst z `build/exec*.txt` (adresy PC v hex, jedna na řádek).
+  - Ověřeno záznamem z zx84 (`exec_trace.py`, `mkdis.py` ho čte z `build/exec*.txt`).
+  - Provedlo se 837 adres a všechny jsou v disassembleru jako kód.
+  - Z 849 instrukcí se v krátkém scénáři neprovedlo 14:
+    - přetečení ukazatelů (náhodná čísla 85B6h, konec textu FF72h),
+    - druhá značka skladby Y (86AAh),
+    - mrtvá druhá položka klávesy T (C0F4h),
+    - nepoužitý vektor `jp_tick`,
+    - příkaz skoku 80h.
+  - FFF4h a FFFFh jsou v obrazu data, kód tam zapíše až `init_song` (`DATA_FORCE`).
 - **Data skladeb:**
   - `player.py` přehraje 30 000 tiknutí každé skladby (všech 27) a zaznamená, který bajt se čte jako
     nota, obálka nebo efekt.
@@ -126,11 +152,13 @@ python tools\player.py log A 500            rem registry R0-R13 skladby A po tik
 - **Časování:** tiknutí je 50 Hz. CGA-1V dává 60 Hz, proto 50 Hz musí dávat 82C54 na MPH-1V.
 - **Spectrum v kódu:** ROM (`KEY-SCAN`, `DRAW`, `PLOT`, obsluha přerušení 0038h), systémové proměnné,
   obrazovka a atributy. Animace čar je v BASICu a ROM, port ji musí nahradit.
-- **Model přehrávače:** `player.py` je model podle kódu, s emulátorem ověřený zatím není.
-  - Každou skladbu hraje od stavu, který je uložený v TAP.
-  - Skutečný program přenáší mezi skladbami některé hodnoty kanálů (například ukazatel obálky).
+- **Model přehrávače:** `player.py` dává registry AY po tiknutích stejně jako originál (ověřeno
+  `ay_compare.py`) a může sloužit jako reference pro port.
+  - Model hraje každou skladbu od stavu uloženého v TAP.
+  - V zx84 se skladby hrály po sobě (A, B, …), takže hodnoty, které program přenáší mezi skladbami,
+    výsledek neovlivňují.
+- **Border:** během tiknutí přehrávače je fialový (měřítko času CPU). Na SAPI nemá obdobu.
 
-## Nejasnosti k ověření
+## Nejasnosti k ověření na HW
 
 - Hraje originál na 48K s interfacem Melodik? Podle kódu ano: používá jen porty FFFDh a BFFDh, 7FFDh ne.
-- Shoduje se záznam registrů z `player.py` s emulátorem (zx84, model 128K v režimu 48 BASIC)?

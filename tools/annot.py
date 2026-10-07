@@ -33,8 +33,8 @@ SONG_RANGES = [(0x85D4, 0xC000), (0xC83C, 0xFEC4)]
 NORETURN = set()
 NORETURN_AFTER = set()
 
-# bytes that are never code
-DATA_FORCE = set()
+# bytes that are never code in the image (FFF4h jp isr and FFFFh jr are written by init_song)
+DATA_FORCE = {0xFFF4, 0xFFF5, 0xFFF6, 0xFFFF}
 
 # (start, end_exclusive, kind) kind = 'db' | 'dw' | 'text' | 'font'
 DATA_RANGES = [

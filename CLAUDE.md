@@ -22,7 +22,10 @@ nebo 48K s interfacem Melodik.
 - **Model přehrávače:** `tools/player.py` (formát skladeb v jeho hlavičce).
   - Dává rozložení dat skladeb pro disassembler a záznam registrů AY po tiknutích
     (`python tools\player.py log A 500`).
-  - S emulátorem zatím ověřený není.
+  - Je ověřený v zx84: všech 27 skladeb dává na 15 000 tiknutích stejné registry AY
+    (`python tools\zx\ay_compare.py 15000`).
+- **zx84 ze skriptů:** `tools/zx/` (klient MCP přes stdio, start originálu, srovnání AY, záznam
+  provedeného kódu). Node.js je v `C:\Program Files\nodejs`, v `..\zx84` je `npm install` hotový.
 - **Port** zatím nezačal. Bude se dělat stejně jako `..\SAPI-Flappy`:
   - zdroj portu se značkami `SAPI:`,
   - HW vrstva v `platform.asm`,
@@ -40,6 +43,8 @@ nebo 48K s interfacem Melodik.
   - Jsou plně symbolická (`song_X`, `nt_`, `env_`, `fx_`), takže je jde přestěhovat.
   - Je jich 27: 26 na klávesách A–Z a jedna skrytá na A4A6h, kterou žádná klávesa nevybírá.
   - Příkaz 8Ch skladby Y volá kód, který zapisuje na 0000h. Na Spectru je tam ROM, na SAPI RAM.
+  - Skladby E, F a R čtou jako efekt výšky ROM 0000–0026h, protože kanál bez příkazu 86h má efekt
+    na 0000h. Port ty bajty potřebuje (`ROM_HEAD` v `player.py`).
 - **Samomodifikace:** opravované operandy mají návěští `equ $-n` (seznam v README).
 - **Animace čar:** strojový kód `lines` volá BASIC ve smyčce, kreslí přes ROM `DRAW`. Hudba, VU metry
   a scroller běží v přerušení.

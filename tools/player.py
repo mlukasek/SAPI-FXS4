@@ -45,12 +45,19 @@ STACKS = (0xC420, 0xC440, 0xC460)
 NOISE_MASK = 0xC81C   # operand of 'and 1Fh' in command 8Dh, set per song
 NOTE_ARGS = {0x80: 'w', 0x81: 'w', 0x82: 'b', 0x83: '', 0x84: 'b', 0x85: 'b', 0x86: 'w', 0x87: 'w',
              0x88: 'b', 0x89: '', 0x8A: '', 0x8B: '', 0x8C: 'w', 0x8D: 'b', 0x8E: 'b'}
+# Start of the Spectrum ROM (48K ROM = 128K ROM 1 up to 004Ah). A channel without command 86h
+# has its pitch effect pointer at 0000h (cleared by init_song), so songs E, F and R read
+# 0000h-0026h as pitch steps.
+ROM_HEAD = bytes.fromhex(
+    'F3AF11FFFFC3CB112A5D5C225F5C1843C3F215FFFFFFFFFF2A5D5C7ECD7D00D0'
+    'CD740018F7FFFFFFC35B33FFFFFFFFFFC52A615CE5C39E16F5E52A785C232278')
 CODE_STUBS = {0x86AA, 0x86AE}   # 8Ch targets: ld (0000h),a with A = 2 / 1 (no effect on the Spectrum)
 
 
 class Player:
     def __init__(self, mem):
         self.m = bytearray(mem)
+        self.m[0:len(ROM_HEAD)] = ROM_HEAD
         self.kind = {}       # byte addr -> 'note' | 'env' | 'fx' | 'hdr'
         self.items = {}      # item start -> (kind, length)
         self.words = {}      # address of a pointer operand -> target
