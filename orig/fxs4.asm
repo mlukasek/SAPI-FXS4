@@ -182,7 +182,8 @@ font:	defb 00h,00h,00h,00h,00h,00h,00h,00h; 8160  ' '
 	defb 02h,0Eh                           ; 8460
 ; Line animation, called from BASIC in a loop (RANDOMIZE USR 33890).
 ; Draws bouncing lines with the ROM DRAW, end points in the printer buffer.
-; Returns on a key (or on ENTER only, when BASIC pokes CAh to lines_exit_jp).
+; Returns on a key (or on SPACE only, when BASIC pokes CAh to lines_exit_jp:
+; KEY-SCAN code + 1 = 21h).
 lines:	ld hl,line_buf                   ; 8462
 	xor a                                  ; 8465
 	ld (lines_new),a                       ; 8466

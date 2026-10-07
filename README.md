@@ -180,6 +180,11 @@ změny. Obraz se kreslí přímo na CGA-1V vlastními rutinami: na první pohled
   MCP: `load_binary` souboru `fxs4.com` na 0100h a `set_registers` s `pc` = 0100h (`tools/emu/port.py`).
 - **Ovládání:** A–Z skladba (27. skladba na klávesu nemá), ENTER zrychlení (3 tiknutí za snímek), ESC návrat
   do CP/M.
+  - Mezerník ukončí animaci čar (testuje kód KEY-SCAN + 1 = 21h, tedy SPACE). BASIC ji spustí znovu
+    s prázdným seznamem čar, takže čáry na obrazovce zůstanou a už se nesmažou. Originál v zx84 to dělá
+    stejně.
+  - Ostatní klávesy (číslice, mínus…) jsou jako klávesa 0 a nedělají nic, jen změní směr animace jako
+    každá klávesa.
 
 ### Paměť (SAPI)
 
@@ -209,7 +214,7 @@ změny. Obraz se kreslí přímo na CGA-1V vlastními rutinami: na první pohled
 | VU metry (FEC4h) | `vu_cga`: stejné sloupce, mění se jen řádky mezi starou a novou výškou |
 | scroller (FF28h) | `scroll_cga`: plynule 2 body za snímek, duha přes paletu (o písmeno za snímek) |
 | IM 2 na 50 Hz, ROM přerušení (FRAMES, klávesnice) | 82C54 čítač 2, 1300,7 Hz (`isr`): klávesnice, každé 26. přerušení snímek (50,03 Hz) |
-| KEY-SCAN | `key_scan`: kód klávesy, která je „dole“ (5 snímků, ENTER 30) |
+| KEY-SCAN | `key_scan`: kód klávesy, která je „dole“ (5 snímků, ENTER 30): písmena, ENTER, SPACE, ostatní jako 0 |
 | AY: R13–R0 na FFFDh/BFFDh (`ay_write`) | `opl_update`: YM3812 kanály 0–2 tóny, 3 šum |
 | ROM 0000–0026h jako efekt výšky (skladby E, F, R) | `rom_head` (kopie 64 bajtů ROM) |
 | `ld (0000h),a` z dat skladby Y | `ld (song_mark),a` |

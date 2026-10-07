@@ -51,8 +51,9 @@ IEN_RUN:	equ 0A0h		; and the F2 interrupt
 ; down) for ENTER_HOLD frames: longer than the delay of an autorepeat.
 KEY_HOLD:	equ 5			; 100 ms
 ENTER_HOLD:	equ 30			; 600 ms
-ZX_ENTER:	equ 021h		; KEY-SCAN codes
-ZX_SPACE:	equ 020h
+ZX_ENTER:	equ 021h		; KEY-SCAN codes: ENTER (frame: 3 ticks)
+ZX_SPACE:	equ 020h		; SPACE (lines: back to BASIC, see key_frame)
+ZX_ZERO:	equ 023h		; 0 (does nothing in the program)
 
 ; Memory above the program (not in the .COM)
 PROGRAM_LIMIT:	equ 0B300h		; the program ends below (tools/check_port.py)
@@ -99,7 +100,7 @@ sapi_init:
 	call cga_unpack
 	call scr_init
 ; What the BASIC did before RANDOMIZE USR 49500 (lines 9500-9600)
-	ld a,0CAh			; POKE 34025,202: lines exit on ENTER only
+	ld a,0CAh			; POKE 34025,202: lines end on SPACE only
 	ld (lines_exit_jp),a
 	ld a,046h			; POKE 34049,70: colour cycle
 	ld (colours_1),a
@@ -269,6 +270,10 @@ wf_loop:
 ; ---- key_frame
 ; Once a frame: a new key from the interrupt becomes the key that is
 ; down (KEY-SCAN code) for KEY_HOLD frames; ESC goes back to CP/M.
+; Letters choose songs, ENTER makes the music faster. SPACE ends the line
+; animation (lines tests KEY-SCAN code + 1 = 21h), the BASIC starts it
+; again with an empty list of lines, so the lines on the screen stay:
+; the original does the same.
 key_frame:
 	ld a,(kbd_code)
 	or a
@@ -284,7 +289,10 @@ key_frame:
 	cp 00Dh				; CR
 	jr z,kf_set
 	ld b,KEY_HOLD
-	ld e,ZX_SPACE			; other keys: as SPACE (no song)
+	ld e,ZX_SPACE
+	cp ' '
+	jr z,kf_set
+	ld e,ZX_ZERO			; other keys: as 0 (no song)
 	and 0DFh			; lower case -> upper case
 	sub 'A'
 	jr c,kf_set

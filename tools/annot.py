@@ -128,7 +128,8 @@ COMMENTS = {
     0x8460: 'Unused',
     0x8462: 'Line animation, called from BASIC in a loop (RANDOMIZE USR 33890).\n'
             'Draws bouncing lines with the ROM DRAW, end points in the printer buffer.\n'
-            'Returns on a key (or on ENTER only, when BASIC pokes CAh to lines_exit_jp).',
+            'Returns on a key (or on SPACE only, when BASIC pokes CAh to lines_exit_jp:\n'
+            'KEY-SCAN code + 1 = 21h).',
     0x8500: 'Colours for the attribute cycle, 0 = back to the start (BASIC pokes colours_1)',
     0x85A4: 'Variables of the line animation',
     0x85AB: 'Random number: ROM bytes + R + FRAMES',
