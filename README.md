@@ -13,8 +13,8 @@ text s Fukovým komentářem ke skladbám a básněmi Ernsta Jandla.
 
 Přeložit (`build.cmd`, viz níže) a dostat program do CP/M sestavy V:
 
-- **Skutečný počítač:** přenést `build\fxs4.com` přes sériovou linku XMODEMem (autor používá `DOCPM.COM`)
-  a spustit `FXS4`.
+- **Skutečný počítač:** přenést `build\fxs4.com` do CP/M kterýmkoli způsobem, který sestava umí (např.
+  XMODEM přes sériovou linku programem `DOCPM.COM`), a spustit `FXS4`.
 - **SAPIemu** (sestava `machines/sapi1v.sapi`): Soubor → Nahrát program do paměti (`build\fxs4.hex`, od
   0100h), v CP/M `SAVE 158 FXS4.COM` a spustit `FXS4`.
 

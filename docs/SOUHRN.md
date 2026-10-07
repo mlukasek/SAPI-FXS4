@@ -28,7 +28,8 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 | zx84 | `..\zx84` + Node.js (`C:\Program Files\nodejs`), v `..\zx84` jednou `npm install` | originál: srovnání AY, záznam kódu, zachycení obrazovky |
 | z88dk-dis | `..\Tools\z88dk\bin\z88dk-dis.exe` | jen pro ruční prohlížení kódu, skripty ho nepotřebují |
 
-- **Na skutečný počítač** se `.com` přenáší přes sériovou linku XMODEMem (`DOCPM.COM` v CP/M sestavy V).
+- **Na skutečný počítač** se přenáší přímo `.com`, kterýmkoli způsobem, který sestava V umí (autor používá
+  např. XMODEM přes sériovou linku programem `DOCPM.COM`).
 - **Překlad portu:** `build.cmd` → `build\fxs4.com`, `build\fxs4.hex`. Na to stačí Python a pasmo. Data
   obrazovky jsou v repu (`tools/zx_start_screen.bin`), zx84 netřeba.
 - **SAPIemu pro skripty:** ve složce `..\SAPIemu-release` spustit na pozadí
