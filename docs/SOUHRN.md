@@ -31,6 +31,13 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 | z88dk-dis | `..\Tools\z88dk\bin\z88dk-dis.exe` | jen pro ruční prohlížení kódu, skripty ho nepotřebují |
 | GitHub CLI | `gh` (přihlášený účet mlukasek) | vydání (release) |
 
+- **Na disk C: vývojového SAPIemu** (`..\SAPIemu\work\ide\sapi_hdd.img`, mimo repo; u autora je tam
+  `C:FXS4.COM`):
+  - spustit `..\SAPIemu\out\build\windows-release\sapiemu-cli.exe --data-root E:\SAPI_GIT\SAPIemu --machine
+    machines/sapi1v.sapi --mcp --mcp-port 8593` (ne 8580, to je GUI autora);
+  - přes MCP: `resume`, boot volbou `3` (CP/M s IDE diskem), `load_binary` `build\fxs4.com` na 0100h,
+    `type_text` „`SAVE 159 C:FXS4.COM\r`“ (stránky vypíše `build.cmd`), kontrola `STAT C:FXS4.COM`;
+  - nakonec `power off` (ne zabít) a `sapiemu-cli` ukončit.
 - **Na skutečný počítač** se přenáší přímo `.com`, kterýmkoli způsobem, který sestava V umí (autor používá
   např. XMODEM přes sériovou linku programem `DOCPM.COM`).
 - **Překlad portu:** `build.cmd` → `build\fxs4.com`, `build\fxs4.hex`. Na to stačí Python a pasmo. Data
