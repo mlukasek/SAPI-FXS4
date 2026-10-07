@@ -1,5 +1,8 @@
 # SAPI-FXS4: Fuxoft Soundtrack IV pro SAPI-1
 
+**Verze 1.0.0** (2026-10-07): [stažení](https://github.com/mlukasek/SAPI-FXS4/releases/tag/v1.0.0)
+(`fxs4.com`, `fxs4.hex`), změny v [docs/release-notes](docs/release-notes/).
+
 Port hudebního dema **Fuxoft Soundtrack IV** Františka Fuky (Fuxoft) ze ZX Spectra na počítač **Tesla SAPI-1**,
 sestavu „V“ Libora Lasoty: CPU karta JPR-1V, paměť RAM-1V, barevná grafika **CGA-1V** a zvuková karta
 **MPH-1V**. Program běží pod CP/M jako `FXS4.COM`.
@@ -11,7 +14,8 @@ text s Fukovým komentářem ke skladbám a básněmi Ernsta Jandla.
 
 ## Spuštění
 
-Přeložit (`build.cmd`, viz níže) a dostat program do CP/M sestavy V:
+Stáhnout `fxs4.com` a `fxs4.hex` z [vydání](https://github.com/mlukasek/SAPI-FXS4/releases), nebo je přeložit
+(`build.cmd`, viz níže), a dostat program do CP/M sestavy V:
 
 - **Skutečný počítač:** přenést `build\fxs4.com` do CP/M kterýmkoli způsobem, který sestava umí (např.
   XMODEM přes sériovou linku programem `DOCPM.COM`), a spustit `FXS4`.
@@ -84,7 +88,7 @@ Podle Fukova rolujícího textu:
 - **Originál:** `Demos/FXSOUND4.TAP`, ZX Spectrum 48K s AY (128K nebo Melodik). Autor František Fuka (Fuxoft).
 - **Port:** Martin Lukášek s Claude (2026). Ze strojového kódu originálu je udělaný symbolický disassembler
   (`orig/fxs4.asm`). Port je jeho kopie se změnami a vlastní obsluhou hardwaru SAPI.
-- **Stav:** hotové, ověřené v emulátoru SAPIemu i na skutečné sestavě V.
+- **Stav:** verze 1.0.0, ověřená v emulátoru SAPIemu (4 i 2 MHz) i na skutečné sestavě V.
 
 ## Překlad
 
@@ -99,6 +103,8 @@ pro `SAVE`.
 
 ## Dokumentace
 
-- `docs/SOUHRN.md`: stav, postup na novém počítači, rozhodnutí, další kroky, otázky k ověření na HW.
+- `docs/SOUHRN.md`: stav, postup na novém počítači, vydání nové verze, rozhodnutí, další kroky, co se
+  ověřilo na HW.
+- `docs/release-notes/`: změny v jednotlivých verzích.
 - `docs/vyvoj.md`: technika: rozbor originálu, disassembler, formát skladeb, jak je port udělaný, časování,
   zvuk, nástroje a ověřování.

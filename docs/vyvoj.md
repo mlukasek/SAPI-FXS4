@@ -218,7 +218,8 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
   - Důvod: na skutečné CGA-1V obraz „sněžil“ po celé obrazovce. Zápis do RAMDACu během kreslení ruší obraz
     tam, kde je zrovna paprsek. Po opravě nesněží (ověřil autor na HW).
   - **Žádné dlouhé `DI`:** přerušení musí na zatemnění přijít včas. `DI` v `frame_play` (C109h, před
-    tiknutími navíc s ENTER) je proto pryč: s ním lehce sněžilo nahoře při mačkání ENTER.
+    tiknutími navíc s ENTER) je proto pryč: s ním lehce sněžilo nahoře při mačkání ENTER. Bez něj nesněží
+    (ověřil autor na HW).
   - Paletu tak zapisuje jen přerušení, takže dřívější souběh hlavní smyčky s přerušením (adresa a R, G, B jsou
     čtyři zápisy, „čudlíky“ ve scrolleru do a2bc3de) už nastat nemůže. `tools/emu/block_check.py` je hledá
     na snímcích CGA.

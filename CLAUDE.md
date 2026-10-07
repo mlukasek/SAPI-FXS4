@@ -41,4 +41,6 @@ Lukášek (mlukasek). Komunikace s autorem **česky**.
 - **Git:** lokální commity průběžně, push jen na výslovné vyžádání. Na konec commitu řádek Co-Authored-By.
 - **Dokumentace:** důležité poznatky zapisovat do `docs/` (na projektu se pracuje z více počítačů), stav
   a rozhodnutí do `docs/SOUHRN.md`.
-- **Reálný HW:** autor ho má. Otázky k ověření sbírat v `docs/SOUHRN.md` (Nejasnosti k ověření na HW).
+- **Reálný HW:** autor ho má. Otázky k ověření sbírat v `docs/SOUHRN.md` (Nejasnosti), výsledky do „Ověřeno
+  na HW“. Sněžení CGA-1V se v emulátoru neprojeví: paleta jen v zatemnění, žádné dlouhé `DI`.
+- **Vydání:** postup v `docs/SOUHRN.md` (Vydání nové verze), poznámky v `docs/release-notes/`. Vydaná je 1.0.0.

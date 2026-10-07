@@ -1,22 +1,20 @@
 # SAPI-FXS4: souhrn a předávka
 
 Stav projektu, postup na jiném počítači, rozhodnutí autora a další kroky. Technika je v `docs/vyvoj.md`,
-popis pro uživatele v `README.md`.
+popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
 
-## Stav (2026-10-07)
+## Stav: verze 1.0.0 (2026-10-07)
 
-- **Port je hotový a běží v SAPIemu** (0.3.0-alpha, sestava `machines/sapi1v.sapi`) při 4 i 2 MHz:
+- **Hotové a vydané:** GitHub release `v1.0.0` (`fxs4.com`, `fxs4.hex`), repo `mlukasek/SAPI-FXS4` (veřejné).
+- **Ověřeno na skutečné sestavě V** (autor): obraz, hudba, klávesnice, bez „sněžení“ CGA-1V.
+- **Ověřeno v SAPIemu** (0.3.0-alpha, sestava `machines/sapi1v.sapi`) při 4 i 2 MHz:
   - obraz: rámeček s animací čar a cyklováním barev, nápis, texty, VU metry, duhový scroller;
   - hudba: všech 27 skladeb (A–Z a skrytá na `-`), ENTER zrychlení, SPACE nová animace, ESC do CP/M.
 - **Hudba je ověřená:**
   - registry AY přehrávače portu sedí tick po ticku s modelem `tools/player.py`;
   - model sedí s originálem v zx84 u všech 27 skladeb na 15 000 tiknutích.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
-- **Na skutečné sestavě V funguje** (ověřil autor 2026-10-07).
-  - CGA-1V „sněžila“ po celé obrazovce kvůli zápisům do palety během kreslení. Paleta se teď zapisuje
-    v zatemnění a nesněží.
-  - Zbytek při mačkání ENTER je opravený, zatím neověřený na HW (viz Nejasnosti).
-- Repo `mlukasek/SAPI-FXS4`: commity jsou jen lokálně, push jen na výslovný pokyn autora.
+- **Git:** lokální commity průběžně, push a vydání jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
 
@@ -29,6 +27,7 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 | SAPIemu release | `..\SAPIemu-release` (teď 0.3.0-alpha) | spuštění a ověřování portu |
 | zx84 | `..\zx84` + Node.js (`C:\Program Files\nodejs`), v `..\zx84` jednou `npm install` | originál: srovnání AY, záznam kódu, zachycení obrazovky |
 | z88dk-dis | `..\Tools\z88dk\bin\z88dk-dis.exe` | jen pro ruční prohlížení kódu, skripty ho nepotřebují |
+| GitHub CLI | `gh` (přihlášený účet mlukasek) | vydání (release) |
 
 - **Na skutečný počítač** se přenáší přímo `.com`, kterýmkoli způsobem, který sestava V umí (autor používá
   např. XMODEM přes sériovou linku programem `DOCPM.COM`).
@@ -38,7 +37,7 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
   `sapiemu-cli --machine machines/sapi1v.sapi --mcp --mcp-port 8592`.
   - Port 8580 patří GUI autora. Release je oddělený od vývojové verze `..\SAPIemu`, kterou autor mezitím
     překládá, a má vlastní disk C:.
-  - Když autor chce release vyměnit, `sapiemu-cli` se musí ukončit.
+  - Když autor chce release vyměnit, nebo už ho nepotřebujeme, `sapiemu-cli` ukončit.
   - Skripty v `tools/emu` si samy nabootují CP/M (volba 1) a uloží stav `cpm` do paměti emulátoru.
 - **zx84:** skripty v `tools/zx` ho spouštějí samy přes stdio (`node node_modules/tsx/dist/cli.mjs
   mcp/server.ts`). ROM Spectra si zx84 při prvním spuštění stáhne do `mcp/.cache` (potřeba internet).
@@ -48,15 +47,26 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 ## Kontrola po změně
 
 ```
-build.cmd                                  rem překlad, velikost, volné místo (teď asi 5,2 KB)
+build.cmd                                  rem překlad, velikost, volné místo (teď asi 5,1 KB)
 python tools\emu\port.py 4000 build\x.png  rem port v SAPIemu 4 s, snímek CGA-1V (prohlédnout)
 python tools\emu\ay_check.py 300 AEFR-     rem hudba: registry AY portu proti modelu (výběr kláves)
 python tools\emu\bench.py                  rem čas snímku při 4 a 2 MHz, zpožděné snímky
 python tools\emu\block_check.py 100        rem barevné bloky ve scrolleru (chyba palety)
+build.cmd diag                             rem build\fxs4diag.com: za běhu nekreslí (hledání sněžení na HW)
 ```
 
 Po změně disassembleru (`tools/annot.py`): `python tools\mkdis.py asm orig\fxs4.asm` a `python
 tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, změny v něm jsou ruční.
+
+**Sněžení se v emulátoru neprojeví**, změny kolem palety a zakázaného přerušení musí autor ověřit na HW.
+
+## Vydání nové verze
+
+1. Popsat změny v `docs/release-notes/vX.Y.Z.md` (vzor `v1.0.0.md`), upravit verzi v `README.md` a stav zde.
+2. `build.cmd`, commit, `git push`.
+3. `git tag vX.Y.Z` a `git push origin vX.Y.Z`.
+4. `gh release create vX.Y.Z build\fxs4.com build\fxs4.hex --title "SAPI-FXS4 X.Y.Z" --notes-file
+   docs\release-notes\vX.Y.Z.md`.
 
 ## Rozhodnutí autora
 
@@ -67,8 +77,9 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
   (posun palety). Barvy písmen samy o sobě jako v originálu nejsou.
 - **SPACE:** po novém startu animace se oblast animace vymaže. Na Spectru staré čáry zůstávaly.
 - **Skrytá 27. skladba** (A4A6h, na Spectru bez klávesy) je na klávese `-`.
-- **Hlavní cíl je 4 MHz** (sestava V má TURBO), 2 MHz má fungovat taky (teď stíhá, animace je pomalejší).
+- **Hlavní cíl je 4 MHz** (sestava V má TURBO), 2 MHz má fungovat taky (stíhá, animace je pomalejší).
 - Klávesnice se čte v přerušení 1300 Hz, protože Consul 262.3 na JPR-1V nemá 7474 (STROBE je pulz 1 ms).
+- Paleta CGA-1V se mění jen v zatemnění a přerušení nesmí být dlouho zakázané (jinak na HW „sněží“).
 
 ## Historie (hlavní kroky)
 
@@ -83,30 +94,30 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 | f872462 | duha scrolleru přes posun palety |
 | 95b57d0 | animaci ukončuje jen SPACE jako na Spectru, ostatní klávesy jako 0 |
 | 0543faf | SPACE vymaže animaci, skrytá skladba na `-` |
+| 3498458 | dokumentace: README, `docs/SOUHRN.md`, `docs/vyvoj.md` |
+| 4ebca60 | paleta jen v zatemnění CGA-1V (sněžení na HW), diagnostická verze |
+| aa78a16 | bez `DI` ve `frame_play` (sněžení nahoře při mačkání ENTER) |
+| tag v1.0.0 | vydání 1.0.0 |
+
+## Ověřeno na HW (2026-10-07, autor)
+
+- Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po pásech, přerušení z MPH-1V na
+  1300,7 Hz, klávesnice, zvuk YM3812.
+- **Paleta Bt476 se smí měnit jen v zatemnění.** Zápisy během kreslení dělaly „sníh“ po celé obrazovce. Port ji
+  zapisuje, když STATUS CGA-1V hlásí zatemnění (D7). Diagnostická verze, která za běhu nekreslí do videoram
+  (`build.cmd diag`), nesněžila taky, takže přístupy CPU do videoram obraz neruší.
+- **Přerušení nesmí být dlouho zakázané.** S `DI` ve `frame_play` (tiknutí navíc s ENTER) přišlo přerušení na
+  zatemnění pozdě a při mačkání ENTER lehce sněžilo nahoře. Bez `DI` nesněží.
 
 ## Další kroky a nápady
 
-- Ověřit na HW, že při mačkání ENTER už nesněží (viz Nejasnosti).
 - Zvuk: jen když bude autor chtít jinou barvu tónu nebo šumu. Nápady jsou šum přes rytmický režim YM3812
   nebo jiná křivka hlasitosti AY. Všechno je v `opl_update` a `ym_regs` (`sapi/platform.asm`).
 - 2 MHz: animace čar je pomalejší (10,4 čáry/s proti 18,4 na Spectru). Zrychlit by šla `plot_xor`
   (rychlejší výpočet adresy bodu, například tabulky zarovnané na stránky).
 
-## Ověřeno na HW (2026-10-07, autor)
+## Nejasnosti
 
-Port na skutečné sestavě V funguje: obraz CGA-1V v režimu EGA s paletou po pásech, přerušení z MPH-1V na
-1300,7 Hz, klávesnice, zvuk YM3812.
-
-Paleta Bt476 se smí měnit jen v zatemnění: zápisy během kreslení dělaly „sníh“ po celé obrazovce. Port ji
-zapisuje, když STATUS CGA-1V hlásí zatemnění (D7). Diagnostická verze, která za běhu nekreslí do videoram
-(`build.cmd diag`), nesněžila taky, takže přístupy CPU do videoram obraz neruší.
-
-## Nejasnosti k ověření na HW
-
-- **Sněžení CGA-1V při mačkání ENTER:** po opravě palety (4ebca60) už obraz nesněží, ani diagnostická verze.
-  Jen při zuřivém mačkání ENTER lehce sněžilo v horní části obrazovky. Příčina: `frame_play` originálu dával
-  před dvěma tiknutími navíc `DI`, přerušení přišlo na zatemnění pozdě a paleta se zapsala až v obraze (nahoře).
-  `DI` je pryč (verze po 6d85f6b), na HW zatím neověřeno.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru
