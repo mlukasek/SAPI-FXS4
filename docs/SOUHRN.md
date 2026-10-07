@@ -14,6 +14,8 @@ popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
   - registry AY přehrávače portu sedí tick po ticku s modelem `tools/player.py`;
   - model sedí s originálem v zx84 u všech 27 skladeb na 15 000 tiknutích.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
+- **Po 1.0.0 opraveno:** skladba D (a možná Z) po chvíli spadla, protože rychlé přerušení ukládalo registry
+  na zásobník kanálu přehrávače. Teď má vlastní zásobník (viz `docs/vyvoj.md`, Časování). Zatím nevydáno.
 - **Git:** lokální commity průběžně, push a vydání jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
@@ -47,11 +49,12 @@ Složky jsou vedle sebe v `E:\SAPI_GIT` (jinde upravit cesty nebo proměnné pro
 ## Kontrola po změně
 
 ```
-build.cmd                                  rem překlad, velikost, volné místo (teď asi 5,1 KB)
+build.cmd                                  rem překlad, velikost, volné místo (teď asi 5 KB)
 python tools\emu\port.py 4000 build\x.png  rem port v SAPIemu 4 s, snímek CGA-1V (prohlédnout)
 python tools\emu\ay_check.py 300 AEFR-     rem hudba: registry AY portu proti modelu (výběr kláves)
 python tools\emu\bench.py                  rem čas snímku při 4 a 2 MHz, zpožděné snímky
 python tools\emu\block_check.py 100        rem barevné bloky ve scrolleru (chyba palety)
+python tools\emu\crash_check.py           rem všech 27 skladeb po 20 s, hlídá pád (PC mimo program)
 build.cmd diag                             rem build\fxs4diag.com: za běhu nekreslí (hledání sněžení na HW)
 ```
 
@@ -98,6 +101,7 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 | 4ebca60 | paleta jen v zatemnění CGA-1V (sněžení na HW), diagnostická verze |
 | aa78a16 | bez `DI` ve `frame_play` (sněžení nahoře při mačkání ENTER) |
 | tag v1.0.0 | vydání 1.0.0 |
+| (po 1.0.0) | vlastní zásobník rychlého přerušení: skladba D padala |
 
 ## Ověřeno na HW (2026-10-07, autor)
 

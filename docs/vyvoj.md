@@ -28,6 +28,7 @@ uživatele je `README.md`.
 | `tools/emu/ay_check.py` | registry AY portu v SAPIemu proti `player.py` |
 | `tools/emu/bench.py` | doba práce snímku po částech při 4 a 2 MHz |
 | `tools/emu/block_check.py` | hledá barevné bloky ve scrolleru na snímcích CGA-1V (chybná položka palety) |
+| `tools/emu/crash_check.py` | všechny skladby po 20 s v SAPIemu, hlídá pád (PC mimo program) |
 
 Příkazy (Python 3, pasmo v `E:\SAPI_GIT\Tools\pasmo-0.5.3\pasmo.exe` nebo v proměnné `PASMO`):
 
@@ -38,6 +39,7 @@ python tools\mkdis.py report                rem konflikty, operandy brané jako 
 python tools\mkdis.py map                   rem úseky kódu a dat
 python tools\player.py cover                rem přehraje všechny skladby, hlásí konflikty v datech
 python tools\player.py log A 500            rem registry R0-R13 skladby A po tiknutích (50 Hz)
+python tools\player.py stack                rem nejhlubší využití zásobníků kanálů (32 B) ve skladbách
 python tools\zx\ay_compare.py 15000         rem všech 27 skladeb v zx84 proti modelu (asi 4 min)
 python tools\zx\ay_compare.py 500 AB --save rem jen A a B, registry z zx84 do build\ay_A.txt ...
 python tools\zx\exec_trace.py               rem provedené adresy, pak znovu mkdis.py asm a report
@@ -239,7 +241,15 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
 ### Časování
 
 - Přerušení 1300,7 Hz (0,77 ms) kvůli klávesnici Consul 262.3 bez 7474 (STROBE je pulz 1 ms). Snímek
-  originálu je každé 26. přerušení a běží s povoleným přerušením. Když snímek přijde, zatímco předchozí
+  originálu je každé 26. přerušení a běží s povoleným přerušením.
+- **Rychlá část přerušení má vlastní zásobník** (`isr_stack`, 32 bajtů).
+  - Přehrávač originálu při tiknutí kanálu přepne SP na zásobník kanálu (32 bajtů pro volání a smyčky
+    v datech skladby). Na Spectru tam nic jiného nezapisovalo.
+  - Tady přerušení přijde i během přehrávače a dřív ukládalo registry pod SP kanálu. S voláním `pal_flush`
+    v zatemnění to bylo až 14 bajtů.
+  - Skladba D zaplní zásobník kanálu A až na 22 bajtů, takže přerušení přepsalo proměnné pod ním (`sp_a`
+    až `sp_c`) a program spadl. Skladba Z má 20 bajtů. Model to změří: `python tools\player.py stack`.
+  - Práce snímku běží dál na přerušeném zásobníku: začíná jen mimo přehrávač, tedy v hlavní smyčce. Když snímek přijde, zatímco předchozí
   ještě běží, dožene se jen jeho tiknutí přehrávače (`ticks_owed`): hudba nezpomalí.
 - Práce snímku (`tools/emu/bench.py`, jeden snímek, takty 4 MHz):
 
@@ -294,6 +304,8 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
   globální CLAUDE.md). `jr` přes rozvinuté `LDI` (`rept 60`) nedosáhne, je tam `jp`.
 - **Paleta CGA-1V** se smí zapisovat jen v zatemnění (`pal_flush` z přerušení), jinak na skutečné desce
   „sněží“. Přerušení proto nesmí být dlouho zakázané (viz Obraz).
+- **Zásobník kanálu:** přehrávač běží se SP v zásobníku kanálu (32 bajtů). Cokoli, co ho přeruší, musí mít
+  vlastní zásobník (`isr_stack`), jinak hluboko vnořené skladby (D) spadnou.
 - **Klávesy:** KEY-SCAN 20h = SPACE, 21h = ENTER. Animace testuje kód + 1 = 21h, tedy SPACE (dřív v komentářích
   omylem ENTER).
 - **Stav kanálů z TAP:** bloky kanálů v obrazu obsahují ukazatele z poslední hrané skladby. Žádná skladba je

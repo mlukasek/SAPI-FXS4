@@ -32,6 +32,7 @@ and noise of the channel), other bytes are signed pitch steps (one per tick).
 
   player.py log KEY [TICKS]   print the AY registers R0-R13 for every tick of song KEY
   player.py cover [TICKS]     play all songs, report conflicts in the data layout
+  player.py stack [TICKS]     deepest use of the channel stacks (32 bytes each) in every song
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -58,6 +59,8 @@ class Player:
     def __init__(self, mem):
         self.m = bytearray(mem)
         self.m[0:len(ROM_HEAD)] = ROM_HEAD
+        self.cur = 0
+        self.stack_low = list(STACKS)   # lowest SP of each channel stack (stack_depth)
         self.kind = {}       # byte addr -> 'note' | 'env' | 'fx' | 'hdr'
         self.items = {}      # item start -> (kind, length)
         self.words = {}      # address of a pointer operand -> target
@@ -101,6 +104,8 @@ class Player:
     def push(self, v):
         self.sp = (self.sp - 2) & 0xFFFF
         self.put16(self.sp, v)
+        k = self.cur
+        self.stack_low[k] = min(self.stack_low[k], self.sp)
 
     def pop(self):
         v = self.w16(self.sp)
@@ -136,6 +141,7 @@ class Player:
 
     # ---- C5B0h
     def channel(self, ix, ch):
+        self.cur = ch - 1
         m = self.m
         m[ix + 2] = (m[ix + 2] - 1) & 0xFF
         if m[ix + 2] == 0:
@@ -337,6 +343,12 @@ if __name__ == '__main__':
         p = Player(mem)
         for t, r in enumerate(run_song(p, key, h, int(sys.argv[3]) if len(sys.argv) > 3 else 500)):
             print('%5d ' % t + ' '.join('%02X' % v for v in r))
+    elif sys.argv[1] == 'stack':
+        n = int(sys.argv[2]) if len(sys.argv) > 2 else 15000
+        for key, h in annot.SONGS:
+            p = Player(mem)
+            run_song(p, key, h, n)
+            print('%s: %s bytes of 32' % (key, ' '.join('%2d' % (STACKS[k] - p.stack_low[k]) for k in range(3))))
     elif sys.argv[1] == 'cover':
         n = int(sys.argv[2]) if len(sys.argv) > 2 else 30000
         c = coverage(mem, annot.SONGS, n)

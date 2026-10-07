@@ -20,7 +20,7 @@ Stáhnout `fxs4.com` a `fxs4.hex` z [vydání](https://github.com/mlukasek/SAPI-
 - **Skutečný počítač:** přenést `build\fxs4.com` do CP/M kterýmkoli způsobem, který sestava umí (např.
   XMODEM přes sériovou linku programem `DOCPM.COM`), a spustit `FXS4`.
 - **SAPIemu** (sestava `machines/sapi1v.sapi`): Soubor → Nahrát program do paměti (`build\fxs4.hex`, od
-  0100h), v CP/M `SAVE 158 FXS4.COM` a spustit `FXS4`.
+  0100h), v CP/M `SAVE 159 FXS4.COM` (počet stránek vypíše `build.cmd`) a spustit `FXS4`.
 
 Obraz je na výstupu CGA-1V, zvuk na MPH-1V. Program běží při 4 i 2 MHz (propojka TURBO na JPR-1V).
 

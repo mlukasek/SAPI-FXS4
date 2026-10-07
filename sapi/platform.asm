@@ -158,6 +158,11 @@ sapi_exit:
 ; =====================================================================
 
 ; ---- isr (RST 38h, 1300.7 Hz)
+; The quick part runs on its own stack (isr_stack): the player of the
+; original sets SP to the stack of a channel (32 bytes, deep calls and
+; loops in the song data) and runs with interrupts enabled here; on the
+; Spectrum its interrupt was the only one. Pushing there overwrote the
+; variables below the stack (song D crashed).
 ; Acknowledges F2, reads the keyboard and writes palette changes when the
 ; CGA-1V is in its vertical blank. Every FRAME_TICKS interrupts it
 ; does the work of a Spectrum frame with interrupts enabled (the keyboard
@@ -166,6 +171,8 @@ sapi_exit:
 ; that comes while the last one still runs only gets its player tick
 ; (ticks_owed, played at the end of the running one).
 isr:
+	ld (isr_sp),sp			; own stack: the player runs with SP in a channel
+	ld sp,isr_stack_top		; stack of 32 bytes (song D fills 22 of them)
 	push af
 	ld a,080h			; clear F2
 	out (MIACK),a
@@ -206,6 +213,7 @@ isr_novbi:
 	ld (frame_div),a
 	jr z,isr_frame
 	pop af
+	ld sp,(isr_sp)
 	ei
 	reti
 isr_frame:
@@ -224,11 +232,15 @@ isr_frame:
 	inc a
 	ld (ticks_owed),a
 	pop af
+	ld sp,(isr_sp)
 	ei
 	reti
-isr_work:
-	inc a
-	ld (frame_busy),a
+isr_work:				; the work of a frame on the interrupted stack:
+	inc a				; the main loop's (a frame never starts during
+	ld (frame_busy),a		; the player, that runs in the work of a frame)
+	pop af
+	ld sp,(isr_sp)
+	push af
 	push bc
 	push de
 	push hl
@@ -1299,6 +1311,9 @@ ym_state:
 ; Variables
 ; =====================================================================
 
+isr_sp:		defw 0			; SP of the interrupted code
+isr_stack:	defs 32			; stack of the quick part of isr
+isr_stack_top:
 frames:		defb 0			; FRAMES (5C78h): counted each frame
 frame_div:	defb FRAME_TICKS	; interrupts to the next frame
 frame_busy:	defb 0			; 1 = the work of a frame runs
