@@ -36,12 +36,12 @@ NORETURN_AFTER = set()
 # bytes that are never code in the image (FFF4h jp isr and FFFFh jr are written by init_song)
 DATA_FORCE = {0xFFF4, 0xFFF5, 0xFFF6, 0xFFFF}
 
-# (start, end_exclusive, kind) kind = 'db' | 'dw' | 'text' | 'font'
+# (start, end_exclusive, kind) kind = 'db' | 'dw' | 'dwn' (words that are numbers) | 'text' | 'font'
 DATA_RANGES = [
     (0x744A, 0x815F, 'text'),     # scroll text
     (0x8160, 0x8460, 'font'),     # characters 20h-7Fh (CHARS = 8060h, BASIC 9020)
     (0xC200, 0xC302, 'db'),       # IM 2 vector table, all FFh -> FFFFh
-    (0xC49C, 0xC544, 'dw'),       # AY tone periods of notes 1-84
+    (0xC49C, 0xC544, 'dwn'),      # AY tone periods of notes 1-84 (numbers)
     (0xC752, 0xC770, 'dw'),       # command handlers 80h-8Eh
     (0xC835, 0xC83B, 'dw'),       # header of the current song
     (0xFF06, 0xFF28, 'dw'),       # VU meter rows, scroll text start and pointer
@@ -55,6 +55,8 @@ IMM_NUM = {
     0x85B6,     # ld hl,2FFEh
     0x85BC,     # ld de,0562h
     0x852E,     # ld hl,0101h: DRAW signs
+    0xC393,     # ld hl,0000h: clear channel flags, transpose and pitch effect
+    0xC6F0,     # ld de,0000h: rest = tone period 0
 }
 IMM_ADDR = set()
 

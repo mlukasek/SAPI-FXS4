@@ -1,0 +1,1336 @@
+; =====================================================================
+;  SAPI-1 V platform layer of the Fuxoft Soundtrack IV port: replaces the
+;  Spectrum screen and ROM (KEY-SCAN, PLOT, DRAW, the 50 Hz interrupt),
+;  the BASIC main loop and the AY-3-8912.
+;
+;  Hardware (machines/sapi1v.sapi of SAPIemu):
+;  - RAM-1V MAP register 63h: C0h = MAP1 = MAP2 = H, CGA-1V at C000h
+;    (RAM C000-FFFF hidden, CP/M is not called while the program runs);
+;  - CGA-1V in EGA mode: 80 bytes per line, 4 pixels per byte; the high
+;    nibble has the pixels (D7 left), the low nibble a colour code for
+;    the four. Colour index = line / 32 * 32 + code * 2 + pixel. The
+;    Spectrum screen is in the middle (CGA_TOP lines and CGA_LEFT bytes
+;    from the top left), code = BRIGHT * 8 + INK (the paper is always
+;    black in this program), code 8 = the colour of the line animation;
+;  - MPH-1V at 50h: 82C54 counter 2 (CLK 55930.4 Hz) sets F2 -> /INT0
+;    (JPR-1V, IM 1 = RST 38h); YM3812;
+;  - keyboard on JPR-1V (Consul 262.3 without 7474 or EKL-1): STROBE on
+;    P0-IN0 (port 01h, active low), code on P1 (port 02h, inverted).
+;
+;  The program keeps the Spectrum screen in zx_screen (layout of 4000h);
+;  zx_flush_frame copies what changes in a frame to the CGA, zx_plot
+;  plots into both.
+; =====================================================================
+
+MAPREG:		equ 063h		; RAM-1V MAP register
+MAP_CGA:	equ 0C0h		; MAP1 = MAP2 = H
+CGA:		equ 0C000h		; CGA-1V base
+CGA_SIZE:	equ 16000		; 200 lines x 80 bytes
+CGA_CFG:	equ CGA+03FFBh		; CONFIG (write)
+CGA_PAL_ADDR:	equ CGA+03FFCh		; Bt476 palette address
+CGA_PAL_DATA:	equ CGA+03FFDh		; Bt476 R, G, B
+CGA_COLMASK:	equ CGA+03FFEh		; Bt476 pixel mask
+CFG_EGA:	equ 000h		; EGA mode, CPU and display page A, no IRQ
+ANIM_CODE:	equ 8			; colour code of Spectrum rows 0-15
+
+PIT2:		equ 052h		; 82C54 counter 2
+PITCW:		equ 053h		; 82C54 control word (write)
+MIEN:		equ 054h		; MPH-1V IEN (write)
+MIACK:		equ 055h		; MPH-1V IACK (write)
+YMADDR:		equ 056h		; YM3812 register address
+YMDATA:		equ 057h		; YM3812 data
+
+KSTB:		equ 001h		; P0-IN: D0 = keyboard STROBE (active low)
+KDATA:		equ 002h		; P1-IN: key code (inverted)
+
+; Interrupt: 82C54 counter 2 in mode 2 with 43: 55930.4 / 43 = 1300.7 Hz
+; (0.77 ms), so a STROBE pulse of 1 ms (Consul 262.3 without 7474) is
+; always seen. Every 26th interrupt is a Spectrum frame: 50.03 Hz.
+TICK_DIV:	equ 43
+FRAME_TICKS:	equ 26
+IEN_QUIET:	equ 020h		; gate G2, no interrupt
+IEN_RUN:	equ 0A0h		; and the F2 interrupt
+
+; Keys: the SAPI keyboards do not tell when a key is let up. A key is
+; down for KEY_HOLD frames, ENTER (3 player ticks per frame while it is
+; down) for ENTER_HOLD frames: longer than the delay of an autorepeat.
+KEY_HOLD:	equ 5			; 100 ms
+ENTER_HOLD:	equ 30			; 600 ms
+ZX_ENTER:	equ 021h		; KEY-SCAN codes
+ZX_SPACE:	equ 020h
+
+; Memory above the program (not in the .COM): the program ends below
+; zx_screen (tools/check_port.py)
+zx_screen:	equ 0A000h		; Spectrum screen 0A000h-0BAFFh (aligned to 800h)
+ZX_ATTRS:	equ zx_screen+1800h
+LINE_BUF:	equ 0BB00h		; line end points (page), was 5B00h
+ZX_CODES:	equ 0BC00h		; colour codes of the attributes of a row (page)
+STACK_TOP:	equ 0C000h		; stack 0BD00h-0BFFFh (CGA-1V above)
+
+; =====================================================================
+; Start, main loop, exit
+; =====================================================================
+
+; ---- sapi_init
+; Entry from CP/M (0100h). Puts JP isr at 38h, maps the CGA in, sets the
+; palette, the YM3812 and the keyboard, unpacks the Spectrum screen, does
+; what the BASIC did (lines 9200-9600) and starts the 82C54 interrupt and
+; the music (USR 49500).
+sapi_init:
+	di
+	ld sp,STACK_TOP
+	ld hl,0038h
+	ld de,page0_save
+	ld bc,3
+	ldir
+	ld a,0C3h			; JP isr
+	ld (0038h),a
+	ld hl,isr
+	ld (0039h),hl
+	im 1
+	ld a,MAP_CGA
+	out (MAPREG),a
+	ld a,CFG_EGA+002h		; CPU page B: clear it too
+	ld (CGA_CFG),a
+	call cga_clear
+	ld a,CFG_EGA
+	ld (CGA_CFG),a
+	call cga_clear
+	call pal_init
+	ld a,0FFh
+	ld (CGA_COLMASK),a
+	call ym_init
+	ld a,002h			; keyboard ACK off, buzzer off
+	out (KSTB),a
+	call zx_unpack
+	call zx_flush_all
+	call vu_prepare
+; What the BASIC did before RANDOMIZE USR 49500 (lines 9500-9600)
+	ld a,0CAh			; POKE 34025,202: lines exit on ENTER only
+	ld (lines_exit_jp),a
+	ld a,046h			; POKE 34049,70: colour cycle
+	ld (colours_1),a
+	ld hl,(text_start)		; POKE 65318/65319: scroll text from the start
+	ld (text_ptr),hl
+	ld a,007h			; the rows of the animation: INK 7 (CLS)
+	call anim_colour
+	ld a,0B4h			; counter 2: LSB+MSB, mode 2
+	out (PITCW),a
+	ld a,TICK_DIV
+	out (PIT2),a
+	xor a
+	out (PIT2),a
+	ld a,0C0h			; clear F2 and F1
+	out (MIACK),a
+	ld a,FRAME_TICKS
+	ld (frame_div),a
+	ld a,IEN_RUN
+	out (MIEN),a
+	call start_music		; USR 49500 (enables the interrupt)
+	ei
+; BASIC line 20: RANDOMIZE USR 33890: GO TO 20
+main_loop:
+	call lines
+	jr main_loop
+
+; ---- sapi_exit
+; Back to CP/M (ESC): silence, interrupt off, page 0 back, CGA unmapped,
+; warm boot.
+sapi_exit:
+	di
+	ld sp,STACK_TOP
+	ld a,IEN_QUIET
+	out (MIEN),a
+	ld a,0C0h
+	out (MIACK),a
+	call ym_silence
+	ld hl,page0_save
+	ld de,0038h
+	ld bc,3
+	ldir
+	xor a
+	out (MAPREG),a
+	ld a,002h
+	out (KSTB),a
+	jp 0
+
+; =====================================================================
+; Interrupt
+; =====================================================================
+
+; ---- isr (RST 38h, 1300.7 Hz)
+; Acknowledges F2 and reads the keyboard. Every FRAME_TICKS interrupts it
+; does the work of a Spectrum frame with interrupts enabled (the keyboard
+; is read meanwhile): key timers, isr_body of the original (VU meters,
+; scroller, keys, player) while music_on, the screen to the CGA. A frame
+; that comes while the last one still runs only gets its player tick
+; (ticks_owed, played at the end of the running one).
+isr:
+	push af
+	ld a,080h			; clear F2
+	out (MIACK),a
+	in a,(KSTB)
+	rrca
+	jr nc,isr_strobe
+	ld a,(kbd_state)		; STROBE inactive: ACK off after a key
+	or a
+	jr z,isr_kdone
+	xor a
+	ld (kbd_state),a
+	ld a,002h
+	out (KSTB),a
+	jr isr_kdone
+isr_strobe:				; STROBE active: take the key once
+	ld a,(kbd_state)
+	or a
+	jr nz,isr_kdone
+	inc a
+	ld (kbd_state),a
+	in a,(KDATA)
+	cpl
+	ld (kbd_code),a
+	ld a,003h			; ACK (EKL-1 waits for it)
+	out (KSTB),a
+isr_kdone:
+	ld a,(frame_div)
+	dec a
+	ld (frame_div),a
+	jr z,isr_frame
+	pop af
+	ei
+	reti
+isr_frame:
+	ld a,FRAME_TICKS
+	ld (frame_div),a
+	ld a,(frames)			; FRAMES (5C78h, the ROM counted it)
+	inc a
+	ld (frames),a
+	ld a,(frame_busy)
+	or a
+	jr z,isr_work
+	ld a,(frames_lost)		; diagnostics (tools/emu/bench.py)
+	inc a
+	ld (frames_lost),a
+	ld a,(ticks_owed)		; the running frame plays this tick too
+	inc a
+	ld (ticks_owed),a
+	pop af
+	ei
+	reti
+isr_work:
+	inc a
+	ld (frame_busy),a
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+	ei
+	call key_frame
+	ld a,(music_on)
+	or a
+	call nz,isr_body
+	ei				; frame_play returns with DI
+	call zx_flush_frame
+zff_end:
+isr_owed:				; ticks of the frames that came meanwhile:
+	di				; the music does not slow down
+	ld a,(ticks_owed)
+	or a
+	jr z,isr_done
+	dec a
+	ld (ticks_owed),a
+	ei
+	ld a,(music_on)
+	or a
+	call nz,tick
+	jr isr_owed
+isr_done:
+	xor a
+	ld (frame_busy),a
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	pop af
+	ei
+	reti
+
+; ---- wait_frame
+; Wait for the next Spectrum frame (the original did EI, HALT).
+; Keeps BC, DE, HL.
+wait_frame:
+	ei
+	push hl
+	ld hl,frames
+	ld a,(hl)
+wf_loop:
+	cp (hl)
+	jr z,wf_loop
+	pop hl
+	ret
+
+; =====================================================================
+; Keyboard
+; =====================================================================
+
+; ---- key_frame
+; Once a frame: a new key from the interrupt becomes the key that is
+; down (KEY-SCAN code) for KEY_HOLD frames; ESC goes back to CP/M.
+key_frame:
+	ld a,(kbd_code)
+	or a
+	jr z,kf_hold
+	ld c,a
+	xor a
+	ld (kbd_code),a
+	ld a,c
+	cp 01Bh				; ESC
+	jp z,sapi_exit
+	ld b,ENTER_HOLD
+	ld e,ZX_ENTER
+	cp 00Dh				; CR
+	jr z,kf_set
+	ld b,KEY_HOLD
+	ld e,ZX_SPACE			; other keys: as SPACE (no song)
+	and 0DFh			; lower case -> upper case
+	sub 'A'
+	jr c,kf_set
+	cp 26
+	jr nc,kf_set
+	ld e,a
+	ld d,0
+	ld hl,zx_letters
+	add hl,de
+	ld e,(hl)
+kf_set:
+	ld a,e
+	ld (key_down),a
+	ld a,b
+	ld (key_timer),a
+	ret
+kf_hold:
+	ld hl,key_timer
+	ld a,(hl)
+	or a
+	ret z
+	dec (hl)
+	ret nz
+	ld a,0FFh
+	ld (key_down),a
+	ret
+
+; ---- key_scan
+; ROM KEY-SCAN (028Eh): E = code of the key that is down, FFh = none.
+key_scan:
+	ld a,(key_down)
+	ld e,a
+	ld d,0FFh			; no shift
+	ret
+
+; KEY-SCAN codes of the letters A-Z
+zx_letters:
+	defb 026h,000h,00Fh,016h,015h,00Eh,006h,001h,012h,009h,011h,019h,010h
+	defb 008h,01Ah,022h,025h,00Dh,01Eh,005h,00Ah,007h,01Dh,017h,002h,01Fh
+
+; =====================================================================
+; Screen
+; =====================================================================
+
+; ---- cga_clear
+; Clear the CPU page of the CGA (16000 bytes).
+cga_clear:
+	ld hl,CGA
+	ld de,CGA+1
+	ld bc,CGA_SIZE-1
+	ld (hl),0
+	ldir
+	ret
+
+; ---- pal_init
+; Palette entry d * 32 + code * 2 + pixel: pixel 0 black, pixel 1 the
+; Spectrum colour of the code, for the 7 bands of 32 lines.
+pal_init:
+	xor a
+	ld (CGA_PAL_ADDR),a
+	ld c,7
+pi_band:
+	ld hl,zx_rgb
+	ld b,16
+pi_code:
+	xor a
+	ld (CGA_PAL_DATA),a
+	ld (CGA_PAL_DATA),a
+	ld (CGA_PAL_DATA),a
+	ld a,(hl)
+	inc hl
+	ld (CGA_PAL_DATA),a
+	ld a,(hl)
+	inc hl
+	ld (CGA_PAL_DATA),a
+	ld a,(hl)
+	inc hl
+	ld (CGA_PAL_DATA),a
+	djnz pi_code
+	dec c
+	jr nz,pi_band
+	ret
+
+; ---- anim_colour
+; A = Spectrum attribute of rows 0-15 (the original filled 5800h-59FFh
+; with it): the colour of code ANIM_CODE in the bands of those rows
+; (CGA lines CGA_TOP to CGA_TOP + 127: bands 0-4). Keeps BC, DE, HL.
+anim_colour:
+	push bc
+	push de
+	push hl
+	call attr_code
+	ld l,a				; HL = zx_rgb + 3 * code
+	add a,a
+	add a,l
+	ld e,a
+	ld d,0
+	ld hl,zx_rgb
+	add hl,de
+	ld c,ANIM_CODE*2+1
+	ld b,5
+ac_band:
+	ld a,c
+	ld (CGA_PAL_ADDR),a
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	dec hl
+	dec hl
+	ld a,c
+	add a,32
+	ld c,a
+	djnz ac_band
+	pop hl
+	pop de
+	pop bc
+	ret
+
+; ---- attr_code
+; A = Spectrum attribute -> A = colour code BRIGHT * 8 + INK.
+attr_code:
+	push bc
+	ld b,a
+	and 007h
+	bit 6,b
+	jr z,acd_end
+	or 008h
+acd_end:
+	pop bc
+	ret
+
+; ---- zx_unpack
+; start_screen (RLE: 00h n = n zero bytes, 0 = 256) -> zx_screen.
+zx_unpack:
+	ld hl,start_screen
+	ld de,zx_screen
+zu_loop:
+	ld a,d				; until zx_screen + 6912 = 0BB00h
+	cp high (zx_screen+6912)
+	ret z
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,zu_zeros
+	ld (de),a
+	inc de
+	jr zu_loop
+zu_zeros:
+	ld b,(hl)
+	inc hl
+zu_z:
+	ld (de),a
+	inc de
+	djnz zu_z
+	jr zu_loop
+
+; ---- row_codes
+; A = Spectrum row 0-23: colour codes of its 32 attributes to ZX_CODES +
+; (row & 7) * 32 (the low byte of the pixel addresses of the row).
+; Rows 0-15 get ANIM_CODE. Keeps C.
+row_codes:
+	push bc
+	ld b,a
+	ld l,a				; HL = ZX_ATTRS + row * 32
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	ld de,ZX_ATTRS
+	add hl,de
+	ld a,b
+	and 007h
+	rrca
+	rrca
+	rrca
+	ld e,a				; DE = ZX_CODES + (row & 7) * 32
+	ld d,high ZX_CODES
+	ld a,b
+	cp 23
+	jr z,rc_r23
+	cp 16
+	ld b,32
+	jr c,rc_anim
+rc_loop:
+	ld a,(hl)
+	call attr_code
+	ld (de),a
+	inc hl
+	inc e
+	djnz rc_loop
+	pop bc
+	ret
+rc_anim:
+	ld a,ANIM_CODE
+	ld (de),a
+	inc e
+	djnz rc_anim
+	pop bc
+	ret
+rc_r23:					; row 23: fixed codes (zx_flush_frame)
+	ld hl,r23_codes
+	ld bc,32
+	ldir
+	pop bc
+	ret
+
+; ---- zx_row
+; A = Spectrum row 0-23: copy its 8 pixel lines to the CGA.
+zx_row:
+	push af
+	call row_codes
+	pop af
+	ld c,a				; C = row
+	and 018h			; HL = zx_screen + (row & 18h) * 256 + (row & 7) * 32
+	add a,high zx_screen
+	ld h,a
+	ld a,c
+	and 007h
+	rrca
+	rrca
+	rrca
+	ld l,a
+	ld a,c				; line = row * 8
+	add a,a
+	add a,a
+	add a,a
+	ld b,8
+zr_line:
+	push bc
+	push hl
+	push af
+	call zx_line
+	pop af
+	pop hl
+	pop bc
+	inc a
+	inc h
+	djnz zr_line
+	ret
+
+; ---- zx_line
+; Copy 32 bytes of the Spectrum pixel line A (HL = its address) to the
+; CGA, colour codes from ZX_CODES (indexed by L).
+zx_line:
+	push hl
+	ld l,a				; DE = cga_lines[A]
+	ld h,0
+	add hl,hl
+	ld de,cga_lines
+	add hl,de
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	pop hl
+	ld b,high ZX_CODES
+zl_byte:
+	ld c,l
+	ld a,(bc)			; code
+	ld c,a
+	ld a,(hl)
+	and 0F0h
+	or c
+	ld (de),a
+	inc de
+	ld a,(hl)
+	add a,a
+	add a,a
+	add a,a
+	add a,a
+	or c
+	ld (de),a
+	inc de
+	inc l
+	ld a,l
+	and 01Fh
+	jr nz,zl_byte
+	ret
+
+; ---- zx_flush_all
+; The whole Spectrum screen to the CGA.
+zx_flush_all:
+	xor a
+zfa_row:
+	push af
+	call zx_row
+	pop af
+	inc a
+	cp 24
+	jr nz,zfa_row
+	ret
+
+; ---- zx_flush_frame
+; Row 23 (scroller) to the CGA once a frame. The VU meters write to the
+; CGA themselves (vu_cga), the line animation too (zx_plot).
+;
+; The colours of row 23: the scroller shifts the attributes one column to
+; the left every frame and puts a new colour (41h-47h, period 7) into
+; column 30, so the colour of column c is the colour of column 30 from
+; 30 - c frames ago. Here column c has the fixed code 9 + c mod 7
+; (r23_codes; columns 0 and 31 have INK 0) and these 7 codes get the
+; colours of columns 24-30 in the palette (bands 5 and 6, CGA lines
+; 160-199, nothing else there uses them). What is on the screen is the
+; same; only the pixels of columns 1-30 are copied (r23_line).
+zx_flush_frame:
+	ld ix,r23_pal
+	ld hl,ZX_ATTRS+23*32+24
+	ld b,7
+zff_pal:
+	ld a,(hl)
+	inc hl
+	push hl
+	call attr_code			; HL = zx_rgb + 3 * code
+	ld l,a
+	add a,a
+	add a,l
+	ld e,a
+	ld d,0
+	ld hl,zx_rgb
+	add hl,de
+	ld a,(ix+0)			; band 5
+	call pal_rgb
+	ld a,(ix+0)			; band 6
+	add a,32
+	call pal_rgb
+	inc ix
+	pop hl
+	djnz zff_pal
+	ld hl,zx_screen+10E1h		; row 23, line 0, column 1
+	ld ix,cga_lines+(184*2)
+	ld b,8
+zff_line:
+	ld e,(ix+0)
+	ld d,(ix+1)
+	inc de				; column 1
+	inc de
+	inc ix
+	inc ix
+	push bc
+	push hl
+	call r23_line
+	pop hl
+	pop bc
+	inc h
+	djnz zff_line
+	ret
+
+; ---- pal_rgb
+; Palette entry A = R, G, B at HL. Keeps BC, DE, HL.
+pal_rgb:
+	ld (CGA_PAL_ADDR),a
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	inc hl
+	ld a,(hl)
+	ld (CGA_PAL_DATA),a
+	dec hl
+	dec hl
+	ret
+
+; ---- scroll_pixels
+; The rotation of the scroller (FF48h): 2 passes over the 8 lines of row
+; 23 from line 7, each RL from column 31 to column 1, the carry going on
+; from line to line (as on the Spectrum: what leaves column 1 enters
+; column 31 of the next line, which has INK 0). Unrolled.
+scroll_pixels:
+	ld c,2
+spx_pass:
+	ld h,high scr_r23_c31_l7
+	ld b,8
+spx_line:
+	ld l,0FFh			; column 31
+	rept 31
+	rl (hl)
+	dec l
+	endm
+	dec h
+	djnz spx_line
+	dec c
+	jr nz,spx_pass
+	ret
+
+; ---- vu_cga
+; vu_meters (FEC4h) writing to the CGA. The original clears the 15 rows
+; of the three bars (bytes 0, 2, 4 of each row of vu_rows) and draws a
+; bar of 7Eh for each channel with a tone, as high as its volume. Here
+; only the rows between the old and the new height change (vu_height);
+; the screen is the same. A Spectrum byte is two CGA bytes, INK 7.
+vu_cga:
+	ld b,3				; channel 3, 2, 1
+vc_chan:
+	push bc
+	ld hl,vu_base			; tone period of the channel (as FEDAh)
+	ld de,0014h
+vc_add:
+	add hl,de
+	djnz vc_add
+	ld a,(hl)
+	inc hl
+	or (hl)
+	inc hl
+	jr z,vc_h			; no tone: height 0
+	ld a,(hl)			; volume
+	and 00Fh
+vc_h:
+	ld c,a				; C = new height
+	pop af
+	push af
+	dec a
+	ld e,a				; DE = channel - 1
+	ld d,0
+	ld hl,vu_height
+	add hl,de
+	ld b,(hl)			; B = old height
+	ld (hl),c
+	add a,a				; CGA offset (channel - 1) * 4
+	add a,a
+	ld e,a
+	ld a,c
+	cp b
+	jr z,vc_next
+	jr c,vc_lower
+vc_up:					; rows B .. C - 1: bar
+	ld a,b
+	call vu_row
+	ld (hl),077h			; 7Eh: pixels 0111, 1110
+	inc hl
+	ld (hl),0E7h
+	inc b
+	ld a,b
+	cp c
+	jr nz,vc_up
+	jr vc_next
+vc_lower:				; rows C .. B - 1: clear
+	dec b
+	ld a,b
+	call vu_row
+	ld (hl),007h
+	inc hl
+	ld (hl),007h
+	ld a,b
+	cp c
+	jr nz,vc_lower
+vc_next:
+	pop bc
+	djnz vc_chan
+	ret
+
+; HL = vu_rows_cga[A] + DE. Keeps BC, DE.
+vu_row:
+	add a,a
+	ld l,a
+	ld h,0
+	push de
+	ld de,vu_rows_cga
+	add hl,de
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	pop de
+	add hl,de
+	ret
+
+; ---- vu_prepare
+; vu_rows_cga = CGA addresses of vu_rows (Spectrum screen).
+vu_prepare:
+	ld hl,vu_rows
+	ld ix,vu_rows_cga
+	ld b,15
+vp_row:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	push hl
+	push bc
+	call zx_to_cga
+	ld (ix+0),l
+	ld (ix+1),h
+	inc ix
+	inc ix
+	pop bc
+	pop hl
+	djnz vp_row
+	ret
+
+; ---- zx_to_cga
+; DE = address in zx_screen -> HL = CGA address of its first 4 pixels.
+zx_to_cga:
+	ld a,d				; line = (H & 18h) * 8 + (L & E0h) / 4 + (H & 7)
+	and 018h
+	add a,a
+	add a,a
+	add a,a
+	ld c,a
+	ld a,e
+	and 0E0h
+	rrca
+	rrca
+	add a,c
+	ld c,a
+	ld a,d
+	and 007h
+	add a,c
+	ld l,a
+	ld h,0
+	add hl,hl
+	ld bc,cga_lines
+	add hl,bc
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld a,e				; + column * 2
+	and 01Fh
+	add a,a
+	ld c,a
+	ld b,0
+	add hl,bc
+	ret
+
+; ---- zx_plot (ROM PLOT-SUB, 22E5h, with OVER 1)
+; B = y (0-175 from the bottom), C = x: XOR the pixel in zx_screen and on
+; the CGA, COORDS = BC. The attribute stays (INK 8, PAPER 8).
+; Changes AF, BC, DE, HL (not the other register set, see zx_draw_line).
+zx_plot:
+	ld (zx_coords),bc
+	ld a,175			; line = 175 - y
+	sub b
+	ld b,a
+	and 0C0h			; H = high zx_screen + (line & C0h) / 8 + (line & 7)
+	rrca
+	rrca
+	rrca
+	ld h,a
+	ld a,b
+	and 007h
+	or h
+	add a,high zx_screen
+	ld h,a
+	ld a,b				; L = (line & 38h) * 4 + x / 8
+	and 038h
+	add a,a
+	add a,a
+	ld l,a
+	ld a,c
+	rrca
+	rrca
+	rrca
+	and 01Fh
+	or l
+	ld l,a
+	ld a,c				; bit 7 - (x & 7)
+	and 007h
+	ld e,a
+	ld a,080h
+	jr z,zp_m1
+zp_s1:
+	rrca
+	dec e
+	jr nz,zp_s1
+zp_m1:
+	xor (hl)
+	ld (hl),a
+	ld l,b				; CGA: cga_lines[line] + x / 4, bit 7 - (x & 3)
+	ld h,0
+	add hl,hl
+	ld de,cga_lines
+	add hl,de
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,c
+	rrca
+	rrca
+	and 03Fh
+	ld l,a
+	ld h,0
+	add hl,de
+	ld a,c
+	and 003h
+	ld e,a
+	ld a,080h
+	jr z,zp_m2
+zp_s2:
+	rrca
+	dec e
+	jr nz,zp_s2
+zp_m2:
+	xor (hl)
+	ld (hl),a
+	ret
+
+; ---- zx_draw_line (ROM DRAW-LINE, 24BAh)
+; B = |dy|, C = |dx|, D = sign of dy, E = sign of dx (+1 / -1): draw from
+; COORDS like the ROM: the longer side steps every time, the shorter one
+; when the sum of its length passes the longer one (start at half). The
+; loop state is in the other register set while zx_plot runs, as in the
+; ROM. The range checks of the ROM are left out (the animation stays in
+; the screen).
+zx_draw_line:
+	ld a,c
+	cp b
+	jr nc,zdl_xge
+	ld l,c				; |dy| > |dx|: L = shorter
+	push de				; diagonal step
+	xor a
+	ld e,a				; straight step: dy only
+	jr zdl_larger
+zdl_xge:
+	or c
+	ret z
+	ld l,b
+	ld b,c
+	push de
+	ld d,0				; straight step: dx only
+zdl_larger:
+	ld h,b				; H = longer, B = steps
+	ld a,b
+	rra
+zdl_loop:
+	add a,l
+	jr c,zdl_diag
+	cp h
+	jr c,zdl_straight
+zdl_diag:
+	sub h
+	ld c,a
+	exx
+	pop bc
+	push bc
+	jr zdl_step
+zdl_straight:
+	ld c,a
+	push de
+	exx
+	pop bc
+zdl_step:
+	ld hl,(zx_coords)		; L = x, H = y
+	ld a,b
+	add a,h
+	ld b,a
+	ld a,c
+	add a,l
+	ld c,a
+	call zx_plot
+	exx
+	ld a,c
+	djnz zdl_loop
+	pop de
+	ret
+
+; =====================================================================
+; Sound: AY-3-8912 registers -> YM3812
+; =====================================================================
+
+; The player writes the AY registers R0-R10 in each tick (ay_regs). The
+; YM3812 plays them: channels 0-2 the tones of AY channels A-C, channel 3
+; the noise. Tone: period P (12 bits), 1.7734 MHz / 16 / P = 110837.5 / P
+; Hz, the same constant as the MZ-800 PSG of the Flappy port (110840):
+; F-number = K / (P << block), K = 110840 * 2^20 / 49716 = 23ABECh.
+; Noise: one generator (period R6) for all channels; the YM3812 channel
+; gets the loudest volume of the channels with noise on. A channel with
+; both tone and noise (the AY outputs tone AND noise) plays its tone 6 dB
+; lower. AY volume 0-15 -> TL in steps of 3 dB, 0 = key off.
+YM_KHI:		equ 008EAh		; K >> 10
+YM_KLO:		equ 003ECh		; the 10 low bits of K
+
+ym_init:
+	ld hl,ym_regs
+yi_loop:
+	ld a,(hl)			; register, value pairs, FFh ends
+	inc a
+	ret z
+	dec a
+	inc hl
+	ld e,(hl)
+	inc hl
+	call ym_write
+	jr yi_loop
+
+; tone channels 0-2: modulator with feedback (buzzy, like a square),
+; carrier sustained; channel 3: noisy modulator (multiple 15, feedback 7)
+ym_regs:
+	defb 001h,020h			; WSE
+	defb 008h,000h
+	defb 0BDh,000h
+	defb 020h,021h, 021h,021h, 022h,021h, 023h,021h, 024h,021h, 025h,021h
+	defb 040h,01Ch, 041h,01Ch, 042h,01Ch, 043h,03Fh, 044h,03Fh, 045h,03Fh
+	defb 060h,0F0h, 061h,0F0h, 062h,0F0h, 063h,0F0h, 064h,0F0h, 065h,0F0h
+	defb 080h,00Fh, 081h,00Fh, 082h,00Fh, 083h,00Fh, 084h,00Fh, 085h,00Fh
+	defb 0E0h,000h, 0E1h,000h, 0E2h,000h, 0E3h,000h, 0E4h,000h, 0E5h,000h
+	defb 0C0h,00Ch, 0C1h,00Ch, 0C2h,00Ch
+	defb 028h,02Fh, 02Bh,021h	; channel 3 (slots 8 and 11)
+	defb 048h,000h, 04Bh,03Fh
+	defb 068h,0F0h, 06Bh,0F0h
+	defb 088h,00Fh, 08Bh,00Fh
+	defb 0E8h,000h, 0EBh,000h
+	defb 0C3h,00Eh
+	defb 0B0h,000h, 0B1h,000h, 0B2h,000h, 0B3h,000h
+	defb 0FFh
+
+; ---- ym_silence
+ym_silence:
+	ld a,0B0h
+ys_loop:
+	ld e,0
+	push af
+	call ym_write
+	pop af
+	inc a
+	cp 0B4h
+	jr nz,ys_loop
+	ret
+
+; ---- ym_write
+; YM3812 register A = E. The chip needs 12 of its clocks after the
+; address and 84 after the data (3.3 us and 23.5 us, 94 T at 4 MHz).
+; Keeps BC, DE, HL.
+ym_write:
+	out (YMADDR),a
+	ex (sp),hl
+	ex (sp),hl
+	ld a,e
+	out (YMDATA),a
+	push bc
+	ld b,7
+yw_wait:
+	djnz yw_wait
+	pop bc
+	ret
+
+; ---- opl_update
+; The AY registers in ay_regs -> YM3812 (only what changed is written).
+opl_update:
+	ld hl,ay_regs			; R0-R10 as last time: nothing to do
+	ld de,ou_last
+	ld b,11
+ou_cmp:
+	ld a,(de)
+	cp (hl)
+	jr nz,ou_changed
+	inc hl
+	inc de
+	djnz ou_cmp
+	ret
+ou_changed:
+	ld hl,ay_regs
+	ld de,ou_last
+	ld bc,11
+	ldir
+	xor a
+	ld (ou_noise_vol),a
+	ld c,0				; channel 0-2
+ou_chan:
+	ld a,(ay_reg7)			; tone on: bit C = 0
+	ld b,c
+	inc b
+ou_bit:
+	rrca
+	djnz ou_bit			; CY = tone off
+	sbc a,a
+	cpl
+	ld (ou_tone),a			; FFh = tone on
+	ld a,(ay_reg7)			; noise on: bit C + 3 = 0
+	rrca
+	rrca
+	rrca
+	ld b,c
+	inc b
+ou_nbit:
+	rrca
+	djnz ou_nbit
+	sbc a,a
+	cpl
+	ld (ou_nz),a			; FFh = noise on
+	ld hl,ay_regs+8			; volume
+	ld e,c
+	ld d,0
+	add hl,de
+	ld a,(hl)
+	and 00Fh
+	ld b,a				; B = volume
+	ld a,(ou_nz)
+	or a
+	jr z,ou_tvol
+	ld a,(ou_noise_vol)		; the loudest channel with noise
+	cp b
+	jr nc,ou_nmax
+	ld a,b
+	ld (ou_noise_vol),a
+ou_nmax:
+	ld a,(ou_tone)			; tone and noise: tone 6 dB lower
+	or a
+	jr z,ou_tvol
+	ld a,b
+	sub 2
+	jr nc,ou_t2
+	xor a
+ou_t2:
+	ld b,a
+ou_tvol:
+	ld a,(ou_tone)
+	and b
+	ld b,a				; B = volume of the tone (0 = off)
+	ld hl,ay_regs			; DE = period
+	add hl,de
+	add hl,de
+	ld e,(hl)
+	inc hl
+	ld a,(hl)
+	and 00Fh
+	ld d,a
+	push bc
+	ld a,c
+	call ym_voice
+	pop bc
+	inc c
+	ld a,c
+	cp 3
+	jr nz,ou_chan
+	ld a,(ay_reg6)			; noise: period 0-31 (0 = 1)
+	and 01Fh
+	jr nz,ou_np
+	inc a
+ou_np:
+	ld e,a
+	ld d,0
+	ld a,(ou_noise_vol)
+	ld b,a
+	ld a,3
+	jp ym_voice
+
+ou_last:	defb 0,0,0,0,0,0,0,0FFh,0,0,0	; R0-R10 of the last update
+ou_tone:	defb 0
+ou_nz:		defb 0
+ou_noise_vol:	defb 0
+
+; ---- ym_voice
+; YM3812 channel A (0-3): AY period DE, AY volume B (0-15, 0 = off).
+ym_voice:
+	ld c,a
+	ld l,a				; IX = ym_state + 8 * channel
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	push de
+	ld de,ym_state
+	add hl,de
+	pop de
+	push hl
+	pop ix
+	ld a,d				; period 0 sounds as 1 on the AY
+	or e
+	jr nz,yv_p
+	inc e
+yv_p:
+	ld a,(ix+0)			; a new period: F-number, block
+	cp e
+	jr nz,yv_new
+	ld a,(ix+1)
+	cp d
+	jr z,yv_vol
+yv_new:
+	ld (ix+0),e
+	ld (ix+1),d
+	push bc
+	call ym_fnum			; HL = F-number, B = block, CY = too high
+	ld a,0
+	jr nc,yv_ok
+	ld a,c				; too high: tones are silent, the noise
+	cp 3				; plays at the top of the YM3812
+	ld a,1
+	jr nz,yv_ok
+	ld hl,1023
+	ld b,7
+	xor a
+yv_ok:
+	ld (ix+5),a			; 1 = silent
+	ld a,b
+	add a,a
+	add a,a
+	or h
+	ld (ix+3),a			; block, F-number high
+	ld (ix+2),l
+	pop bc
+	ld e,l				; F-number low
+	ld a,c
+	add a,0A0h
+	call ym_write
+yv_vol:
+	ld a,b				; volume -> TL of the carrier
+	cp (ix+6)
+	jr z,yv_key
+	ld (ix+6),a
+	ld hl,ym_tl
+	ld e,a
+	ld d,0
+	add hl,de
+	ld e,(hl)
+	ld hl,ym_car
+	ld d,0
+	push bc
+	ld b,0
+	add hl,bc
+	pop bc
+	ld a,(hl)
+	call ym_write
+yv_key:
+	ld a,(ix+3)			; KEY ON when it sounds
+	ld e,a
+	ld a,b
+	or a
+	jr z,yv_off
+	ld a,(ix+5)
+	or a
+	jr nz,yv_off
+	set 5,e
+yv_off:
+	ld a,e
+	cp (ix+4)
+	ret z
+	ld (ix+4),a
+	ld a,c
+	add a,0B0h
+	jp ym_write
+
+; ---- ym_fnum
+; DE = period 1-4095 -> HL = F-number, B = block, CY = 1 when the tone is
+; above the YM3812 (period < 18, over 6 kHz). Keeps C.
+ym_fnum:
+	ld b,0
+yf_blk:
+	ld hl,YM_KHI
+	or a
+	sbc hl,de
+	jr c,yf_div			; P << block > K >> 10
+	ld a,b
+	cp 7
+	jr z,yf_max
+	inc b
+	ex de,hl
+	add hl,hl
+	ex de,hl
+	jr yf_blk
+yf_max:
+	ld hl,1023
+	scf
+	ret
+yf_div:
+	push bc
+	push ix
+	ld ix,0				; quotient
+	ld hl,YM_KHI			; remainder
+	ld bc,YM_KLO			; next bits of K, shifted out of B: 10 bits
+	ld a,10
+yf_loop:
+	add ix,ix
+	sla c				; CY = next bit of K (bit 9 of BC first)
+	rl b
+	bit 2,b
+	jr z,yf_b0
+	res 2,b
+	scf
+	jr yf_bit
+yf_b0:
+	or a
+yf_bit:
+	adc hl,hl
+	or a
+	sbc hl,de
+	jr nc,yf_one
+	add hl,de
+	jr yf_next
+yf_one:
+	inc ix
+yf_next:
+	dec a
+	jr nz,yf_loop
+	push ix
+	pop hl
+	pop ix
+	pop bc
+	or a
+	ret
+
+; AY volume 0-15 -> total level of the carrier (0.75 dB): 3 dB a step
+ym_tl:
+	defb 63,56,52,48,44,40,36,32,28,24,20,16,12,8,4,0
+ym_car:
+	defb 043h,044h,045h,04Bh	; carrier slots of channels 0-3
+
+; per channel: period (2), F-number low, B0h value without KEY ON, last
+; B0h value, 1 = too high, volume, (spare)
+ym_state:
+	defb 0FFh,0FFh,0,0,0,0,0FFh,0
+	defb 0FFh,0FFh,0,0,0,0,0FFh,0
+	defb 0FFh,0FFh,0,0,0,0,0FFh,0
+	defb 0FFh,0FFh,0,0,0,0,0FFh,0
+
+; =====================================================================
+; Variables
+; =====================================================================
+
+frames:		defb 0			; FRAMES (5C78h): counted each frame
+frame_div:	defb FRAME_TICKS	; interrupts to the next frame
+frame_busy:	defb 0			; 1 = the work of a frame runs
+frames_lost:	defb 0			; frames that came while the last one ran
+ticks_owed:	defb 0			; their player ticks, not played yet
+music_on:	defb 0			; 1 = IM 2 of the original (isr_body runs)
+kbd_state:	defb 0			; 1 = STROBE taken, ACK on
+kbd_code:	defb 0			; key from the interrupt (0 = none)
+key_down:	defb 0FFh		; KEY-SCAN code of the key that is down
+key_timer:	defb 0			; frames it stays down
+song_mark:	defb 0			; written by the 8Ch calls of song Y
+zx_coords:	defw 0			; COORDS (5C7Dh): x, y of the last point
+sv_chars:	defw font-0100h		; CHARS (5C36h, BASIC 9010: 8060h)
+page0_save:	defs 3
+vu_rows_cga:	defs 30			; CGA addresses of vu_rows
+vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
+
+; The first bytes of the Spectrum ROM: a channel without a pitch effect
+; (command 86h) reads them as one (init_song sets 0000h on the Spectrum).
+; Songs E, F and R read 0000h-0026h (tools/player.py, ROM_HEAD).
+rom_head:
+	defb 0F3h,0AFh,011h,0FFh,0FFh,0C3h,0CBh,011h,02Ah,05Dh,05Ch,022h,05Fh,05Ch,018h,043h
+	defb 0C3h,0F2h,015h,0FFh,0FFh,0FFh,0FFh,0FFh,02Ah,05Dh,05Ch,07Eh,0CDh,07Dh,000h,0D0h
+	defb 0CDh,074h,000h,018h,0F7h,0FFh,0FFh,0FFh,0C3h,05Bh,033h,0FFh,0FFh,0FFh,0FFh,0FFh
+	defb 0C5h,02Ah,061h,05Ch,0E5h,0C3h,09Eh,016h,0F5h,0E5h,02Ah,078h,05Ch,023h,022h,078h

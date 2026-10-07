@@ -396,9 +396,9 @@ def write_asm(d, path):
                 continue
             rng = data_kind(a)
             kind = rng[2] if rng else 'db'
-            if kind == 'dw' and (a - rng[0]) % 2 == 0 and a + 1 < rng[1]:
+            if kind in ('dw', 'dwn') and (a - rng[0]) % 2 == 0 and a + 1 < rng[1]:
                 v = mem[a] | mem[a + 1] << 8
-                txt = d.label(v) if (v in refs and d.dw_is_addr(v)) else hx(v, 4)
+                txt = d.label(v) if (kind == 'dw' and v in refs and d.dw_is_addr(v)) else hx(v, 4)
                 w('%-40s; %04X' % ('%s\tdefw %s' % ((lab + ':') if lab else '', txt), a))
                 if a + 1 in refs:
                     w('%-16s equ $-1' % d.label(a + 1))
