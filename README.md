@@ -1,6 +1,6 @@
 # SAPI-FXS4: Fuxoft Soundtrack IV pro SAPI-1
 
-**Verze 1.0.0** (2026-10-07): [stažení](https://github.com/mlukasek/SAPI-FXS4/releases/tag/v1.0.0)
+**Verze 1.0.1** (2026-10-07): [stažení](https://github.com/mlukasek/SAPI-FXS4/releases/tag/v1.0.1)
 (`fxs4.com`, `fxs4.hex`), změny v [docs/release-notes](docs/release-notes/).
 
 Port hudebního dema **Fuxoft Soundtrack IV** Františka Fuky (Fuxoft) ze ZX Spectra na počítač **Tesla SAPI-1**,
@@ -88,7 +88,7 @@ Podle Fukova rolujícího textu:
 - **Originál:** `Demos/FXSOUND4.TAP`, ZX Spectrum 48K s AY (128K nebo Melodik). Autor František Fuka (Fuxoft).
 - **Port:** Martin Lukášek s Claude (2026). Ze strojového kódu originálu je udělaný symbolický disassembler
   (`orig/fxs4.asm`). Port je jeho kopie se změnami a vlastní obsluhou hardwaru SAPI.
-- **Stav:** verze 1.0.0, ověřená v emulátoru SAPIemu (4 i 2 MHz) i na skutečné sestavě V.
+- **Stav:** verze 1.0.1, ověřená v emulátoru SAPIemu (4 i 2 MHz) i na skutečné sestavě V.
 
 ## Překlad
 

@@ -3,9 +3,9 @@
 Stav projektu, postup na jiném počítači, rozhodnutí autora a další kroky. Technika je v `docs/vyvoj.md`,
 popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
 
-## Stav: verze 1.0.0 (2026-10-07)
+## Stav: verze 1.0.1 (2026-10-07)
 
-- **Hotové a vydané:** GitHub release `v1.0.0` (`fxs4.com`, `fxs4.hex`), repo `mlukasek/SAPI-FXS4` (veřejné).
+- **Hotové a vydané:** GitHub release `v1.0.1` (`fxs4.com`, `fxs4.hex`), repo `mlukasek/SAPI-FXS4` (veřejné).
 - **Ověřeno na skutečné sestavě V** (autor): obraz, hudba, klávesnice, bez „sněžení“ CGA-1V.
 - **Ověřeno v SAPIemu** (0.3.0-alpha, sestava `machines/sapi1v.sapi`) při 4 i 2 MHz:
   - obraz: rámeček s animací čar a cyklováním barev, nápis, texty, VU metry, duhový scroller;
@@ -14,8 +14,8 @@ popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
   - registry AY přehrávače portu sedí tick po ticku s modelem `tools/player.py`;
   - model sedí s originálem v zx84 u všech 27 skladeb na 15 000 tiknutích.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
-- **Po 1.0.0 opraveno:** skladba D (a možná Z) po chvíli spadla, protože rychlé přerušení ukládalo registry
-  na zásobník kanálu přehrávače. Teď má vlastní zásobník (viz `docs/vyvoj.md`, Časování). Zatím nevydáno.
+- **1.0.1:** opravený pád skladby D. Rychlé přerušení ukládalo registry na zásobník kanálu přehrávače,
+  teď má vlastní zásobník (viz `docs/vyvoj.md`, Časování). Ověřeno v SAPIemu i autorem.
 - **Git:** lokální commity průběžně, push a vydání jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
@@ -108,7 +108,8 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 | 4ebca60 | paleta jen v zatemnění CGA-1V (sněžení na HW), diagnostická verze |
 | aa78a16 | bez `DI` ve `frame_play` (sněžení nahoře při mačkání ENTER) |
 | tag v1.0.0 | vydání 1.0.0 |
-| (po 1.0.0) | vlastní zásobník rychlého přerušení: skladba D padala |
+| 4a76fe4 | vlastní zásobník rychlého přerušení: skladba D padala |
+| tag v1.0.1 | vydání 1.0.1 |
 
 ## Ověřeno na HW (2026-10-07, autor)
 
