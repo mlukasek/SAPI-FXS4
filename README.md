@@ -105,7 +105,7 @@ python tools\player.py log A 500            rem registry R0-R13 skladby A po tik
 - **Data skladeb:**
   - `player.py` přehraje 30 000 tiknutí každé skladby (všech 27) a zaznamená, který bajt se čte jako
     nota, obálka nebo efekt.
-  - Při 20 000 i 60 000 tiknutích je to stejných 27 662 bajtů a konflikty nejsou.
+  - Při 20 000 i 60 000 tiknutích je to stejných 28 055 bajtů a konflikty nejsou.
   - Bajty, které se nikdy nečtou, jsou většinou koncové skoky `80 w` za obálkami s dlouhou poslední
     hodnotou a nepoužité obálky. `mkdis.py` je projde staticky a ve výpisu je označí „never reached“.
   - Všechny ukazatele v datech skladeb jsou tak návěští (`nt_`, `env_`, `fx_`, `song_X`). Data jde
