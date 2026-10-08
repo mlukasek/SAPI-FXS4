@@ -163,7 +163,8 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
       kartě proto není jasný.
   - **Jiné vysvětlení:** pokud I opravdu nic nenastavilo (Bíbova CP/M přerušení nepoužívá), I = 0 nic
     nemění. Pak zlepšení přinesla oprava ve verzi 1.0.1 (vlastní zásobník přerušení, skladba D padala), kterou
-    verze s I = 0 obsahuje taky. **Zjistit, kterou verzi Libor zkoušel předtím** (1.0.0 by to vysvětlila).
+    verze s I = 0 obsahuje taky. Libor ale píše, že předtím zkoušel 1.0.1 (jistota to není). Pak zbývá
+    registr I, ještě nenalezená chyba, nebo náhoda: rozhodne až delší běh a další testy.
   - **Pojistky (po 1.0.1, 2026-10-08):**
     - registr I se při startu uloží a při návratu do CP/M (ESC) vrátí (IM 1 zůstane);
     - přerušení DSM-1V (oba kanály, 10h a 14h) se při startu zakážou: `OUT base,03h`. Zapnuté zůstanou RTS
