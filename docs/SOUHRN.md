@@ -149,8 +149,23 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
       čte klávesnici a zapisuje paletu v zatemnění (jinak sněží);
     - `OUT 63h,C0h` dává MAP1 = MAP2 = H, takže DGD-1V by měla být odpojená. **Předpoklad:** RAM-1V má MAP1
       a MAP2 na bitech 6 a 7 portu 63h jako `sapi1v.sapi`.
-  - **Zjistit od Libora:** nastavení MAP na RAM-1V (port, bity MAP1 a MAP2) a jestli FXS4 zamrzá i s jedinou
-    grafickou kartou CGA-1V (pak by šlo o jiný problém než INTA).
+  - **Libor má stejný RAM diskový BIOS** (ZRD-1V) jako autor.
+  - **S verzí s I = 0 (1f8a72e) mu FXS4 běží se všemi třemi grafikami bez záseku** (2026-10-08, průběžně).
+    Předtím tak dlouho nikdy nevydržel. Libor ho nechává běžet hodinu až dvě a přitom zkouší „bad guy“
+    režim: mačká všechno, na co program reaguje, a posílá znaky přes terminál, aby vyvolal případné INT
+    od DSM-1V. Konečné potvrzení čekáme.
+  - **Výklad (hypotéza, neověřeno):**
+    - Z80 po RESETu nastaví I = 00h a RAM diskový BIOS ho podle SAPIemu nemění. Nenulové I tedy muselo
+      zůstat po programu spuštěném dřív, třeba po programu s IM 2.
+    - Při každém M1 je ve druhé půlce na adrese I × 256 + R (refresh, s /MREQ). Při I ≥ C0h a MAP1 = H to
+      je oblast grafických karet.
+    - Podle `..\SAPIemu\docs\desky\JPR-1V.md` JPR-1V při refreshi STSTB negeneruje, přesný mechanismus na
+      kartě proto není jasný.
+  - **Ještě otevřené:**
+    - Při návratu do CP/M FXS4 neobnovuje původní I ani režim přerušení (zůstane IM 1, I = 0). Pro RAM
+      diskový BIOS to nevadí.
+    - Cizí přerušení na /INT0 (např. DSM-1V s IER/IET) FXS4 nepotvrdí. Úroveň by zůstala aktivní a program
+      by se točil jen v přerušení. Libor to teď zkouší přes terminál.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru
