@@ -39,6 +39,13 @@ YMDATA:		equ 057h		; YM3812 data
 KSTB:		equ 001h		; P0-IN: D0 = keyboard STROBE (active low)
 KDATA:		equ 002h		; P1-IN: key code (inverted)
 
+; DSM-1V (and DSM-1) serial channels: base+0 write = modem control,
+; b7 IER, b6 IET (interrupt on a received byte / an empty transmitter),
+; b1 DTR, b0 RTS. Write only, so 03h: RTS, DTR on, interrupts off.
+DSM_A:		equ 010h
+DSM_B:		equ 014h
+DSM_NOINT:	equ 003h
+
 ; Interrupt: 82C54 counter 2 in mode 2 with 43: 55930.4 / 43 = 1300.7 Hz
 ; (0.77 ms), so a STROBE pulse of 1 ms (Consul 262.3 without 7474) is
 ; always seen. Every 26th interrupt is a Spectrum frame: 50.03 Hz.
@@ -85,11 +92,17 @@ sapi_init:
 	ld hl,isr
 	ld (0039h),hl
 	im 1
+	ld a,i				; I of CP/M, back in sapi_exit
+	ld (saved_i),a
 	xor a				; I = 0: the graphics cards set their RDY flip-flop
 	ld i,a				; on STSTB at their address and only I/O cycles
 					; clear it; INTA and an IM 2 vector read at I >= C0h
 					; may leave it set (L. Lasota). IM 1 reads no vector
 					; and all code and stacks are below C000h.
+	ld a,DSM_NOINT			; no interrupts from the serial channels: an
+	out (DSM_A),a			; interrupt this program does not acknowledge
+	out (DSM_B),a			; would keep /INT0 low (the CP/M of J. Biba
+					; uses none)
 	ld a,MAP_CGA
 	out (MAPREG),a
 	ld a,CFG_EGA+002h		; CPU page B: clear it too
@@ -139,7 +152,7 @@ main_loop:
 
 ; ---- sapi_exit
 ; Back to CP/M (ESC): silence, interrupt off, page 0 back, CGA unmapped,
-; warm boot.
+; I as before, warm boot (IM 1 stays).
 sapi_exit:
 	di
 	ld sp,STACK_TOP
@@ -156,6 +169,8 @@ sapi_exit:
 	out (MAPREG),a
 	ld a,002h
 	out (KSTB),a
+	ld a,(saved_i)			; I as CP/M had it
+	ld i,a
 	jp 0
 
 ; =====================================================================
@@ -1337,6 +1352,7 @@ scr_rot:	defb 0			; scroller: rotation of the rainbow (0-6)
 pal_anim:	defb 7			; colour code of the animation (pal_flush)
 pal_dirty:	defb 0			; palette to write: bit 0 animation, bit 1 rainbow
 page0_save:	defs 3
+saved_i:	defb 0			; I of CP/M
 vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
 
 ; The first bytes of the Spectrum ROM: a channel without a pitch effect

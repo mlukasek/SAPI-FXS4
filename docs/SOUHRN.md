@@ -161,11 +161,16 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
       je oblast grafických karet.
     - Podle `..\SAPIemu\docs\desky\JPR-1V.md` JPR-1V při refreshi STSTB negeneruje, přesný mechanismus na
       kartě proto není jasný.
-  - **Ještě otevřené:**
-    - Při návratu do CP/M FXS4 neobnovuje původní I ani režim přerušení (zůstane IM 1, I = 0). Pro RAM
-      diskový BIOS to nevadí.
-    - Cizí přerušení na /INT0 (např. DSM-1V s IER/IET) FXS4 nepotvrdí. Úroveň by zůstala aktivní a program
-      by se točil jen v přerušení. Libor to teď zkouší přes terminál.
+  - **Jiné vysvětlení:** pokud I opravdu nic nenastavilo (Bíbova CP/M přerušení nepoužívá), I = 0 nic
+    nemění. Pak zlepšení přinesla oprava ve verzi 1.0.1 (vlastní zásobník přerušení, skladba D padala), kterou
+    verze s I = 0 obsahuje taky. **Zjistit, kterou verzi Libor zkoušel předtím** (1.0.0 by to vysvětlila).
+  - **Pojistky (po 1.0.1, 2026-10-08):**
+    - registr I se při startu uloží a při návratu do CP/M (ESC) vrátí (IM 1 zůstane);
+    - přerušení DSM-1V (oba kanály, 10h a 14h) se při startu zakážou: `OUT base,03h`. Zapnuté zůstanou RTS
+      a DTR, IER a IET se vynulují. Registr jde jen zapisovat, proto pevná hodnota. Bez toho by přerušení
+      od DSM, které FXS4 nepotvrdí, drželo /INT0 a program by se točil jen v přerušení.
+    - V SAPIemu: za běhu I = 0, IM 1, po ESC původní I (zkoušeno s 55h), CP/M dál funguje. Skladby A, D, Z
+      hrají bez pádu, hudba sedí s modelem.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru

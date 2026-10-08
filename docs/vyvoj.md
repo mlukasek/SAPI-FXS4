@@ -181,8 +181,11 @@ změny, obraz se kreslí přímo na CGA-1V vlastními rutinami.
 | C000–FFFF | CGA-1V (`OUT 63h,C0h`), CP/M pod ní se za běhu nevolá |
 
 - Všechny adresy originálu jsou návěští (disassembler je symbolický), proto se originál přeložil od 0103h.
-- Porty: 01h, 02h klávesnice (JPR-1V), 50h–57h MPH-1V (82C54, IEN, IACK, YM3812), 63h MAP. Port FEh
-  (border) se nepoužívá.
+- Porty: 01h, 02h klávesnice (JPR-1V), 50h–57h MPH-1V (82C54, IEN, IACK, YM3812), 63h MAP. Při startu navíc
+  `OUT 10h,03h` a `OUT 14h,03h` (DSM-1V: přerušení zakázaná, RTS a DTR zapnuté). Port FEh (border) se nepoužívá.
+- **Přerušení:** IM 1 (RST 38h). Registr I se při startu uloží, nastaví na 0 a při návratu do CP/M vrátí.
+  Jediný zdroj přerušení je MPH-1V (F2). Přerušení CGA-1V zůstává vypnuté (CONFIG D3 = 0) a DSM-1V se
+  zakáže, protože cizí přerušení by obsluha nepotvrdila.
 
 ### Jak je port udělaný
 
