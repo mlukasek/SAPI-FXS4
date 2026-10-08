@@ -78,8 +78,10 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 1. Popsat změny v `docs/release-notes/vX.Y.Z.md` (vzor `v1.0.0.md`), upravit verzi v `README.md` a stav zde.
 2. `build.cmd`, commit, `git push`.
 3. `git tag vX.Y.Z` a `git push origin vX.Y.Z`.
-4. `gh release create vX.Y.Z build\fxs4.com build\fxs4.hex --title "SAPI-FXS4 X.Y.Z" --notes-file
-   docs\release-notes\vX.Y.Z.md`.
+4. Zip s oběma soubory (PowerShell): `Compress-Archive -Path build\fxs4.com, build\fxs4.hex
+   -DestinationPath <scratchpad>\SAPI-FXS4-X.Y.Z.zip`.
+5. `gh release create vX.Y.Z build\fxs4.com build\fxs4.hex <scratchpad>\SAPI-FXS4-X.Y.Z.zip --title
+   "SAPI-FXS4 X.Y.Z" --notes-file docs\release-notes\vX.Y.Z.md`.
 
 ## Rozhodnutí autora
 
