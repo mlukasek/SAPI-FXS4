@@ -130,6 +130,27 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 
 ## Nejasnosti
 
+- **Zamrzání u Libora Lasoty (2026-10-08).** Sestava: AND-1V na F800h (MAP1 = L), DGD-1V na C000h (MAP1 = H,
+  MAP2 = L), CGA-1V na C000h (MAP1 = MAP2 = H), DSM-1V 10h, MPH-1V 50h, ZRD-1V 60h, RAM-1V (okno 2 KB na F800h
+  při MAP1 = L, 16 KB na C000h při MAP1 = H), JPR-1V.
+  - FXS4 se mu brzy po startu sekne. Bez DGD-1V to chvíli jede, bez všech grafik déle. Jednou se systém sekl
+    i jen s AND-1V.
+  - **Liborova hypotéza:** klopný obvod WAIT/READY grafických karet (od AND-1Z) nuluje jen /IOR, /IOW a /RES,
+    ne INTA. JPR-1V dává STSTB i při INTA (ne při refreshi). Když přijde INT s adresou v oblasti karty, nebo
+    v IM 2 při čtení vektoru z I × 256 s I ≥ C0h, karta nastaví RDY a nikdo ho neshodí. Doporučuje
+    ohraničit přístupy na grafiku DI/EI, když je MAP1 aktivní, a hlídat, aby I neukazoval od C0h výš.
+  - **Rozbor FXS4:**
+    - IM 1 (vektor se nečte) a od verze po 1.0.1 výslovně I = 0 (`sapi_init`; dřív zůstával z CP/M,
+      v SAPIemu 00h);
+    - všechen kód (0100–9F2Eh) i zásobníky (B300–B6FFh, `isr_stack`, zásobníky kanálů v programu) jsou pod
+      C000h, takže adresa PC při INTA ani zápis návratové adresy nikdy nepadnou do karty, i když je MAP1 = H
+      celou dobu;
+    - DI/EI kolem přístupů na CGA by podle tohoto mechanismu nepomohlo a delší DI nejde: rychlé přerušení
+      čte klávesnici a zapisuje paletu v zatemnění (jinak sněží);
+    - `OUT 63h,C0h` dává MAP1 = MAP2 = H, takže DGD-1V by měla být odpojená. **Předpoklad:** RAM-1V má MAP1
+      a MAP2 na bitech 6 a 7 portu 63h jako `sapi1v.sapi`.
+  - **Zjistit od Libora:** nastavení MAP na RAM-1V (port, bity MAP1 a MAP2) a jestli FXS4 zamrzá i s jedinou
+    grafickou kartou CGA-1V (pak by šlo o jiný problém než INTA).
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru

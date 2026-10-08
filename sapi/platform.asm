@@ -85,6 +85,11 @@ sapi_init:
 	ld hl,isr
 	ld (0039h),hl
 	im 1
+	xor a				; I = 0: the graphics cards set their RDY flip-flop
+	ld i,a				; on STSTB at their address and only I/O cycles
+					; clear it; INTA and an IM 2 vector read at I >= C0h
+					; may leave it set (L. Lasota). IM 1 reads no vector
+					; and all code and stacks are below C000h.
 	ld a,MAP_CGA
 	out (MAPREG),a
 	ld a,CFG_EGA+002h		; CPU page B: clear it too

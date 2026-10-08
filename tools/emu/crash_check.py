@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Play every song of the port in SAPIemu for a while and watch for a crash (PC outside the program).
+"""Play every song of the port in SAPIemu for a while and watch for a crash (PC outside the program
+and the JP isr at 0038h).
 
   crash_check.py [SECONDS] [KEYS]    default 20 s each, keys a-z and - (the 27th song)
 """
@@ -21,7 +22,7 @@ def main():
         sm.call('type_text', text=k, run_ms=200)
         for s in range(secs):
             pc = int(sm.call('run_for', ms=1000)['registers']['pc'], 16)
-            if not 0x100 <= pc < sym['program_end']:
+            if not (0x100 <= pc < sym['program_end'] or 0x38 <= pc <= 0x3A):   # 0038h: JP isr
                 bad.append(k)
                 print('%s: crash after %d s, PC %04X' % (k, s, pc))
                 port.start()
