@@ -3,9 +3,9 @@
 Stav projektu, postup na jiném počítači, rozhodnutí autora a další kroky. Technika je v `docs/vyvoj.md`,
 popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
 
-## Stav: verze 1.0.1 (2026-10-07)
+## Stav: verze 1.0.2 (2026-10-08)
 
-- **Hotové a vydané:** GitHub release `v1.0.1` (`fxs4.com`, `fxs4.hex`), repo `mlukasek/SAPI-FXS4` (veřejné).
+- **Hotové a vydané:** GitHub release `v1.0.2` (`fxs4.com`, `fxs4.hex`), repo `mlukasek/SAPI-FXS4` (veřejné).
 - **Ověřeno na skutečné sestavě V** (autor): obraz, hudba, klávesnice, bez „sněžení“ CGA-1V.
 - **Ověřeno v SAPIemu** (0.3.0-alpha, sestava `machines/sapi1v.sapi`) při 4 i 2 MHz:
   - obraz: rámeček s animací čar a cyklováním barev, nápis, texty, VU metry, duhový scroller;
@@ -16,6 +16,9 @@ popis pro uživatele v `README.md`, změny po verzích v `docs/release-notes/`.
 - **Zvuk YM3812:** převod z AY autorovi zní dobře.
 - **1.0.1:** opravený pád skladby D. Rychlé přerušení ukládalo registry na zásobník kanálu přehrávače,
   teď má vlastní zásobník (viz `docs/vyvoj.md`, Časování). Ověřeno v SAPIemu i autorem.
+- **1.0.2:** při startu I = 0 (zůstane i po návratu do CP/M) a zakázaná přerušení DSM-1V. Opravuje zásek
+  u Libora Lasoty (sestava s AND-1V, DGD-1V a CGA-1V), viz Ověřeno na HW. Ověřeno v SAPIemu, autorem
+  i Liborem.
 - **Git:** lokální commity průběžně, push a vydání jen na výslovný pokyn autora.
 
 ## Postup na novém počítači
@@ -110,6 +113,10 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
 | tag v1.0.0 | vydání 1.0.0 |
 | 4a76fe4 | vlastní zásobník rychlého přerušení: skladba D padala |
 | tag v1.0.1 | vydání 1.0.1 |
+| 1f8a72e | I = 0 při startu (zásek u L. Lasoty) |
+| 3d0d3fd | zakázaná přerušení DSM-1V |
+| e45736a | I se při návratu do CP/M nevrací (zůstane 0) |
+| tag v1.0.2 | vydání 1.0.2 |
 
 ## Ověřeno na HW (2026-10-07, autor)
 
@@ -173,8 +180,8 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
       od DSM, které FXS4 nepotvrdí, drželo /INT0 a program by se točil jen v přerušení.
     - V SAPIemu: za běhu I = 0, IM 1, po ESC CP/M dál funguje. Skladby A, D, Z hrají bez pádu, hudba sedí
       s modelem.
-  - **Libor potvrdil (2026-10-08), že mu verze s I = 0 a zakázaným DSM-1V funguje.** Další revize, až na
-    něco narazí.
+  - **Libor potvrdil (2026-10-08), že mu verze s I = 0 a zakázaným DSM-1V funguje.** Autor ji ověřil taky,
+    vydaná je jako 1.0.2. Další revize, až Libor na něco narazí.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru

@@ -43,4 +43,4 @@ Lukášek (mlukasek). Komunikace s autorem **česky**.
   a rozhodnutí do `docs/SOUHRN.md`.
 - **Reálný HW:** autor ho má. Otázky k ověření sbírat v `docs/SOUHRN.md` (Nejasnosti), výsledky do „Ověřeno
   na HW“. Sněžení CGA-1V se v emulátoru neprojeví: paleta jen v zatemnění, žádné dlouhé `DI`.
-- **Vydání:** postup v `docs/SOUHRN.md` (Vydání nové verze), poznámky v `docs/release-notes/`. Vydaná je 1.0.1.
+- **Vydání:** postup v `docs/SOUHRN.md` (Vydání nové verze), poznámky v `docs/release-notes/`. Vydaná je 1.0.2.
