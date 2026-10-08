@@ -92,8 +92,6 @@ sapi_init:
 	ld hl,isr
 	ld (0039h),hl
 	im 1
-	ld a,i				; I of CP/M, back in sapi_exit
-	ld (saved_i),a
 	xor a				; I = 0: the graphics cards set their RDY flip-flop
 	ld i,a				; on STSTB at their address and only I/O cycles
 					; clear it; INTA and an IM 2 vector read at I >= C0h
@@ -152,7 +150,8 @@ main_loop:
 
 ; ---- sapi_exit
 ; Back to CP/M (ESC): silence, interrupt off, page 0 back, CGA unmapped,
-; I as before, warm boot (IM 1 stays).
+; warm boot. IM 1 and I = 0 stay: each program sets up its own (the view
+; of L. Lasota).
 sapi_exit:
 	di
 	ld sp,STACK_TOP
@@ -169,8 +168,6 @@ sapi_exit:
 	out (MAPREG),a
 	ld a,002h
 	out (KSTB),a
-	ld a,(saved_i)			; I as CP/M had it
-	ld i,a
 	jp 0
 
 ; =====================================================================
@@ -1352,7 +1349,6 @@ scr_rot:	defb 0			; scroller: rotation of the rainbow (0-6)
 pal_anim:	defb 7			; colour code of the animation (pal_flush)
 pal_dirty:	defb 0			; palette to write: bit 0 animation, bit 1 rainbow
 page0_save:	defs 3
-saved_i:	defb 0			; I of CP/M
 vu_height:	defb 0,0,0		; bars on the screen (channels A, B, C)
 
 ; The first bytes of the Spectrum ROM: a channel without a pitch effect

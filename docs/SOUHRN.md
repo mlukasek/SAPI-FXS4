@@ -166,12 +166,15 @@ tools\check_orig.py` (musí hlásit OK). `sapi/fxs4_sapi.asm` se tím nemění, 
     verze s I = 0 obsahuje taky. Libor ale píše, že předtím zkoušel 1.0.1 (jistota to není). Pak zbývá
     registr I, ještě nenalezená chyba, nebo náhoda: rozhodne až delší běh a další testy.
   - **Pojistky (po 1.0.1, 2026-10-08):**
-    - registr I se při startu uloží a při návratu do CP/M (ESC) vrátí (IM 1 zůstane);
+    - registr I se při startu nastaví na 0 a při návratu do CP/M zůstane 0 (IM 1 také). Podle Libora si
+      každý program inicializuje své sám, vracení původního I proto autor nechtěl;
     - přerušení DSM-1V (oba kanály, 10h a 14h) se při startu zakážou: `OUT base,03h`. Zapnuté zůstanou RTS
       a DTR, IER a IET se vynulují. Registr jde jen zapisovat, proto pevná hodnota. Bez toho by přerušení
       od DSM, které FXS4 nepotvrdí, drželo /INT0 a program by se točil jen v přerušení.
-    - V SAPIemu: za běhu I = 0, IM 1, po ESC původní I (zkoušeno s 55h), CP/M dál funguje. Skladby A, D, Z
-      hrají bez pádu, hudba sedí s modelem.
+    - V SAPIemu: za běhu I = 0, IM 1, po ESC CP/M dál funguje. Skladby A, D, Z hrají bez pádu, hudba sedí
+      s modelem.
+  - **Libor potvrdil (2026-10-08), že mu verze s I = 0 a zakázaným DSM-1V funguje.** Další revize, až na
+    něco narazí.
 - Klávesnice Consul 262.3 bez 7474: čtení STROBE každých 0,77 ms se v praxi zatím neprojevilo ztracenými
   stisky (sledovat).
 - Originál na 48K s interfacem Melodik: podle kódu hraje (jen porty FFFDh a BFFDh, 7FFDh ne). V emulátoru
