@@ -99,7 +99,7 @@ Potřeba: Python 3 a assembler pasmo 0.5.3 (`E:\SAPI_GIT\Tools\pasmo-0.5.3\pasmo
 build.cmd
 ```
 
-Vznikne `build\fxs4.com`, `build\fxs4.hex` (od 0100h) a `build\fxs4.sym`. Na konci se vypíše počet stránek
+Vznikne `build\fxs4.com`, `build\fxs4.hex` (od 0100h, start 0100h) a `build\fxs4.sym`. Na konci se vypíše počet stránek
 pro `SAVE`.
 
 ## Dokumentace
